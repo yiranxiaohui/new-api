@@ -78,7 +78,6 @@ jobs:
         uses: docker/metadata-action@v5
         with:
           images: |
-#            calciumion/new-api
             ghcr.io/${{ env.GHCR_REPOSITORY }}
 
       - name: Build & push single-arch (to GHCR)
@@ -88,8 +87,6 @@ jobs:
           platforms: ${{ matrix.platform }}
           push: true
           tags: |
-#            calciumion/new-api:${{ env.TAG }}-${{ matrix.arch }}
-#            calciumion/new-api:latest-${{ matrix.arch }}
             ghcr.io/${{ env.GHCR_REPOSITORY }}:${{ env.TAG }}-${{ matrix.arch }}
             ghcr.io/${{ env.GHCR_REPOSITORY }}:latest-${{ matrix.arch }}
           labels: ${{ steps.meta.outputs.labels }}
