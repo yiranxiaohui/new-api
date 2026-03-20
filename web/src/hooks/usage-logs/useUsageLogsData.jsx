@@ -486,7 +486,7 @@ export const useLogsData = () => {
           });
           expandDataLocal.push({
             key: t('实际模型'),
-            value: other.upstream_model_name,
+            value: logs[i].model_name,
           });
         }
 
