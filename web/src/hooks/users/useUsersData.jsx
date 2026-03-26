@@ -52,6 +52,9 @@ export const useUsersData = () => {
   // Form API reference
   const [formApi, setFormApi] = useState(null);
 
+  // Selection state for batch operations
+  const [selectedKeys, setSelectedKeys] = useState([]);
+
   // Get form values helper function
   const getFormValues = () => {
     const formValues = formApi ? formApi.getValues() : {};
@@ -264,6 +267,45 @@ export const useUsersData = () => {
     });
   };
 
+  // Row selection handlers
+  const rowSelection = {
+    onSelect: (record, selected) => {},
+    onSelectAll: (selected, selectedRows) => {},
+    onChange: (selectedRowKeys, selectedRows) => {
+      setSelectedKeys(selectedRows);
+    },
+  };
+
+  // Batch delete users
+  const batchDeleteUsers = async () => {
+    if (selectedKeys.length === 0) {
+      showError(t('请至少选择一个用户！'));
+      return;
+    }
+    setLoading(true);
+    try {
+      const ids = selectedKeys.map((user) => user.id);
+      const res = await API.post('/api/user/batch', { ids });
+      if (res?.data?.success) {
+        const count = res.data.data || 0;
+        showSuccess(t('批量删除成功') + ` (${count})`);
+        setSelectedKeys([]);
+        await refresh();
+        setTimeout(() => {
+          if (users.length === 0 && activePage > 1) {
+            refresh(activePage - 1);
+          }
+        }, 100);
+      } else {
+        showError(res?.data?.message || t('批量删除失败'));
+      }
+    } catch (error) {
+      showError(error.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
   // Initialize data on component mount
   useEffect(() => {
     loadUsers(0, pageSize)
@@ -314,6 +356,11 @@ export const useUsersData = () => {
     closeAddUser,
     closeEditUser,
     getFormValues,
+
+    // Selection & batch
+    selectedKeys,
+    rowSelection,
+    batchDeleteUsers,
 
     // Translation
     t,

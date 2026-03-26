@@ -50,6 +50,7 @@ const UsersTable = (usersData) => {
     refresh,
     resetUserPasskey,
     resetUserTwoFA,
+    rowSelection,
     t,
   } = usersData;
 
@@ -174,6 +175,7 @@ const UsersTable = (usersData) => {
         columns={tableColumns}
         dataSource={users}
         scroll={compactMode ? undefined : { x: 'max-content' }}
+        rowSelection={rowSelection}
         pagination={{
           currentPage: activePage,
           pageSize: pageSize,

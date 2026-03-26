@@ -778,6 +778,29 @@ func DeleteUser(c *gin.Context) {
 	}
 }
 
+type UserBatch struct {
+	Ids []int `json:"ids"`
+}
+
+func BatchDeleteUsers(c *gin.Context) {
+	userBatch := UserBatch{}
+	if err := c.ShouldBindJSON(&userBatch); err != nil || len(userBatch.Ids) == 0 {
+		common.ApiErrorI18n(c, i18n.MsgInvalidParams)
+		return
+	}
+	myRole := c.GetInt("role")
+	count, err := model.BatchDeleteUsers(userBatch.Ids, myRole)
+	if err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{
+		"success": true,
+		"message": "",
+		"data":    count,
+	})
+}
+
 func DeleteSelf(c *gin.Context) {
 	id := c.GetInt("id")
 	user, _ := model.GetUserById(id, false)
