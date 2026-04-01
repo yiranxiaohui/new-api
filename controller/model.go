@@ -3,6 +3,7 @@ package controller
 import (
 	"fmt"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/QuantumNous/new-api/common"
@@ -28,6 +29,115 @@ import (
 var openAIModels []dto.OpenAIModels
 var openAIModelsMap map[string]dto.OpenAIModels
 var channelId2Models map[int][]string
+
+func resolveAccessibleModelGroups(c *gin.Context) []string {
+	userId := c.GetInt("id")
+	userGroup := ""
+	if userId > 0 {
+		userGroup, _ = model.GetUserGroup(userId, false)
+	}
+
+	tokenGroup := common.GetContextKeyString(c, constant.ContextKeyTokenGroup)
+	if tokenGroup == "auto" {
+		if userGroup == "" {
+			return nil
+		}
+		return service.GetUserAutoGroup(userGroup)
+	}
+
+	group := userGroup
+	if tokenGroup != "" {
+		group = tokenGroup
+	}
+	if group == "" {
+		return nil
+	}
+	return []string{group}
+}
+
+func channelSupportsAnyGroup(channelGroup string, groups []string) bool {
+	if len(groups) == 0 {
+		return false
+	}
+	groupSet := make(map[string]struct{}, len(groups))
+	for _, group := range groups {
+		trimmed := strings.TrimSpace(group)
+		if trimmed != "" {
+			groupSet[trimmed] = struct{}{}
+		}
+	}
+	if len(groupSet) == 0 {
+		return false
+	}
+	for _, channelGroupItem := range strings.Split(channelGroup, ",") {
+		if _, ok := groupSet[strings.TrimSpace(channelGroupItem)]; ok {
+			return true
+		}
+	}
+	return false
+}
+
+func collectHiddenMappedModelNames(channels []*model.Channel, groups []string) map[string]bool {
+	hiddenModels := make(map[string]bool)
+	if len(groups) == 0 {
+		return hiddenModels
+	}
+
+	mappingKeys := make(map[string]bool)
+	mappingValues := make(map[string]bool)
+
+	for _, channel := range channels {
+		if channel == nil || channel.Status != common.ChannelStatusEnabled {
+			continue
+		}
+		if !channelSupportsAnyGroup(channel.Group, groups) {
+			continue
+		}
+
+		modelMapping := strings.TrimSpace(channel.GetModelMapping())
+		if modelMapping == "" {
+			continue
+		}
+
+		parsedMapping := make(map[string]string)
+		if err := common.UnmarshalJsonStr(modelMapping, &parsedMapping); err != nil {
+			continue
+		}
+
+		for sourceModel, targetModel := range parsedMapping {
+			sourceModel = strings.TrimSpace(sourceModel)
+			targetModel = strings.TrimSpace(targetModel)
+			if sourceModel != "" {
+				mappingKeys[sourceModel] = true
+			}
+			if targetModel != "" && targetModel != sourceModel {
+				mappingValues[targetModel] = true
+			}
+		}
+	}
+
+	for targetModel := range mappingValues {
+		if !mappingKeys[targetModel] {
+			hiddenModels[targetModel] = true
+		}
+	}
+
+	return hiddenModels
+}
+
+func getHiddenMappedModelNamesForGroups(groups []string) map[string]bool {
+	hiddenModels := make(map[string]bool)
+	if len(groups) == 0 {
+		return hiddenModels
+	}
+
+	channels, err := model.GetAllChannels(0, 0, true, false)
+	if err != nil {
+		return hiddenModels
+	}
+
+	return collectHiddenMappedModelNames(channels, groups)
+}
 
 func init() {
 	// https://platform.openai.com/docs/models/model-endpoint-compatibility
@@ -111,6 +221,8 @@ func init() {
 
 func ListModels(c *gin.Context, modelType int) {
 	userOpenAiModels := make([]dto.OpenAIModels, 0)
+	accessibleGroups := resolveAccessibleModelGroups(c)
+	hiddenMappedModels := getHiddenMappedModelNamesForGroups(accessibleGroups)
 
 	acceptUnsetRatioModel := operation_setting.SelfUseModeEnabled
 	if !acceptUnsetRatioModel {
@@ -133,6 +245,9 @@ func ListModels(c *gin.Context, modelType int) {
 			tokenModelLimit = map[string]bool{}
 		}
 		for allowModel, _ := range tokenModelLimit {
+			if hiddenMappedModels[allowModel] {
+				continue
+			}
 			if !acceptUnsetRatioModel {
 				_, _, exist := ratio_setting.GetModelRatioOrPrice(allowModel)
 				if !exist {
@@ -181,6 +296,9 @@ func ListModels(c *gin.Context, modelType int) {
 			models = model.GetGroupEnabledModels(group)
 		}
 		for _, modelName := range models {
+			if hiddenMappedModels[modelName] {
+				continue
+			}
 			if !acceptUnsetRatioModel {
 				_, _, exist := ratio_setting.GetModelRatioOrPrice(modelName)
 				if !exist {
@@ -213,11 +331,17 @@ func ListModels(c *gin.Context, modelType int) {
 				Type:        "model",
 			}
 		}
+		firstID := ""
+		lastID := ""
+		if len(useranthropicModels) > 0 {
+			firstID = useranthropicModels[0].ID
+			lastID = useranthropicModels[len(useranthropicModels)-1].ID
+		}
 		c.JSON(200, gin.H{
 			"data":     useranthropicModels,
-			"first_id": useranthropicModels[0].ID,
+			"first_id": firstID,
 			"has_more": false,
-			"last_id":  useranthropicModels[len(useranthropicModels)-1].ID,
+			"last_id":  lastID,
 		})
 	case constant.ChannelTypeGemini:
 		userGeminiModels := make([]dto.GeminiModel, len(userOpenAiModels))

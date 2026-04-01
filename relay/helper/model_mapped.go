@@ -11,6 +11,7 @@ import (
 	relayconstant "github.com/QuantumNous/new-api/relay/constant"
 	"github.com/QuantumNous/new-api/setting/ratio_setting"
 	"github.com/gin-gonic/gin"
+	"github.com/tidwall/gjson"
 	"github.com/tidwall/sjson"
 )
 
@@ -73,7 +74,6 @@ func ModelMappedHelper(c *gin.Context, info *common.RelayInfo, request dto.Reque
 			finalUpstreamModelName = info.UpstreamModelName
 		}
 		info.UpstreamModelName = finalUpstreamModelName
-		info.OriginModelName = ratio_setting.WithCompactModelSuffix(finalUpstreamModelName)
 	}
 	if request != nil {
 		request.SetModelName(info.UpstreamModelName)
@@ -99,9 +99,19 @@ func ReplaceResponseModel(data []byte, info *common.RelayInfo) []byte {
 	if info == nil || !info.IsModelMapped {
 		return data
 	}
-	result, err := sjson.SetBytes(data, "model", info.OriginModelName)
-	if err != nil {
-		return data
+	result := data
+	var err error
+	if gjson.GetBytes(result, "model").Exists() {
+		result, err = sjson.SetBytes(result, "model", info.OriginModelName)
+		if err != nil {
+			return data
+		}
+	}
+	if gjson.GetBytes(result, "response.model").Exists() {
+		result, err = sjson.SetBytes(result, "response.model", info.OriginModelName)
+		if err != nil {
+			return data
+		}
 	}
 	return result
 }
@@ -111,9 +121,19 @@ func ReplaceResponseModelStr(data string, info *common.RelayInfo) string {
 	if info == nil || !info.IsModelMapped {
 		return data
 	}
-	result, err := sjson.Set(data, "model", info.OriginModelName)
-	if err != nil {
-		return data
+	result := data
+	var err error
+	if gjson.Get(result, "model").Exists() {
+		result, err = sjson.Set(result, "model", info.OriginModelName)
+		if err != nil {
+			return data
+		}
+	}
+	if gjson.Get(result, "response.model").Exists() {
+		result, err = sjson.Set(result, "response.model", info.OriginModelName)
+		if err != nil {
+			return data
+		}
 	}
 	return result
 }
