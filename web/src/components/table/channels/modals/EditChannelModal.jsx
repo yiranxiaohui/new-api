@@ -2395,6 +2395,21 @@ const EditChannelModal = (props) => {
                     </Col>
                   </Row>
 
+                  <Row gutter={12}>
+                    <Col span={12}>
+                      <Form.InputNumber
+                        field='max_concurrency'
+                        label={t('最大并发数')}
+                        placeholder={t('0为不限制')}
+                        min={0}
+                        onNumberChange={(value) =>
+                          handleInputChange('max_concurrency', value)
+                        }
+                        style={{ width: '100%' }}
+                      />
+                    </Col>
+                  </Row>
+
                   {inputs.type === 1 && (
                     <>
                       <div className='mt-4 mb-2 text-sm font-medium text-gray-700'>
