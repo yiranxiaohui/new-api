@@ -138,7 +138,7 @@ const TopupHistoryModal = ({ visible, onCancel, t }) => {
   const renderStatusBadge = (status) => {
     const config = STATUS_CONFIG[status] || { type: 'primary', key: status };
     return (
-      <span className='flex items-center gap-2'>
+      <span className='flex items-center gap-2' style={{ whiteSpace: 'nowrap' }}>
         <Badge dot type={config.type} />
         <span>{t(config.key)}</span>
       </span>
@@ -148,7 +148,7 @@ const TopupHistoryModal = ({ visible, onCancel, t }) => {
   // 渲染支付方式
   const renderPaymentMethod = (pm) => {
     const displayName = PAYMENT_METHOD_MAP[pm];
-    return <Text>{displayName ? t(displayName) : pm || '-'}</Text>;
+    return <Text style={{ whiteSpace: 'nowrap' }}>{displayName ? t(displayName) : pm || '-'}</Text>;
   };
 
   const isSubscriptionTopup = (record) => {
@@ -165,7 +165,11 @@ const TopupHistoryModal = ({ visible, onCancel, t }) => {
         title: t('订单号'),
         dataIndex: 'trade_no',
         key: 'trade_no',
-        render: (text) => <Text copyable>{text}</Text>,
+        render: (text) => (
+          <Text copyable style={{ whiteSpace: 'nowrap' }}>
+            {text}
+          </Text>
+        ),
       },
     ];
 
