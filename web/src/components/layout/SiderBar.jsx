@@ -320,7 +320,7 @@ const SiderBar = ({ onNavigate = () => {} }) => {
         itemKey={item.itemKey}
         text={
           <span
-            className='truncate font-medium text-sm'
+            className='font-medium text-sm whitespace-nowrap'
             style={{ color: textColor }}
           >
             {item.text}
@@ -348,7 +348,7 @@ const SiderBar = ({ onNavigate = () => {} }) => {
           itemKey={item.itemKey}
           text={
             <span
-              className='truncate font-medium text-sm'
+              className='font-medium text-sm whitespace-nowrap'
               style={{ color: textColor }}
             >
               {item.text}
@@ -370,7 +370,7 @@ const SiderBar = ({ onNavigate = () => {} }) => {
                 itemKey={subItem.itemKey}
                 text={
                   <span
-                    className='truncate font-medium text-sm'
+                    className='font-medium text-sm whitespace-nowrap'
                     style={{ color: subTextColor }}
                   >
                     {subItem.text}

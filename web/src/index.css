@@ -15,7 +15,7 @@
 
 /* ==================== 全局基础样式 ==================== */
 :root {
-  --sidebar-width: 180px;
+  --sidebar-width: 220px;
   --sidebar-width-collapsed: 60px;
   --sidebar-current-width: var(--sidebar-width);
 }
@@ -90,7 +90,7 @@ code {
 
 .sidebar-nav .semi-navigation-item-text {
   flex: 1;
-  min-width: 0;
+  min-width: fit-content;
 }
 
 .semi-navigation-item,
@@ -134,13 +134,11 @@ code {
   width: 100%;
   background: var(--semi-color-bg-0);
   height: 100%;
-  overflow-x: hidden;
+  overflow-x: auto;
   border-right: none;
   overflow-y: auto;
   min-height: 0;
   -webkit-overflow-scrolling: touch;
-  scrollbar-width: none;
-  -ms-overflow-style: none;
 }
 
 .sidebar-nav::-webkit-scrollbar {
@@ -243,7 +241,16 @@ code {
 }
 
 @media (max-width: 767px) {
+  :root {
+    --sidebar-current-width: 220px;
+  }
+
+  .app-sider {
+    width: var(--sidebar-current-width) !important;
+  }
+
   .sidebar-container {
+    width: var(--sidebar-current-width) !important;
     background: var(--semi-color-bg-1);
     border-right: 1px solid var(--semi-color-border);
   }
