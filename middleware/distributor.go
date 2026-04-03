@@ -48,7 +48,7 @@ func Distribute() func(c *gin.Context) {
 				return
 			}
 			if channel.Status != common.ChannelStatusEnabled {
-				abortWithOpenAiMessage(c, http.StatusForbidden, i18n.T(c, i18n.MsgDistributorChannelDisabled))
+				abortWithOpenAiMessage(c, http.StatusServiceUnavailable, i18n.T(c, i18n.MsgDistributorChannelDisabled))
 				return
 			}
 		} else {
@@ -59,7 +59,7 @@ func Distribute() func(c *gin.Context) {
 				s, ok := common.GetContextKey(c, constant.ContextKeyTokenModelLimit)
 				if !ok {
 					// token model limit is empty, all models are not allowed
-					abortWithOpenAiMessage(c, http.StatusForbidden, i18n.T(c, i18n.MsgDistributorTokenNoModelAccess))
+					abortWithOpenAiMessage(c, http.StatusServiceUnavailable, i18n.T(c, i18n.MsgDistributorTokenNoModelAccess))
 					return
 				}
 				var tokenModelLimit map[string]bool
@@ -69,7 +69,7 @@ func Distribute() func(c *gin.Context) {
 				}
 				matchName := ratio_setting.FormatMatchingModelName(modelRequest.Model) // match gpts & thinking-*
 				if _, ok := tokenModelLimit[matchName]; !ok {
-					abortWithOpenAiMessage(c, http.StatusForbidden, i18n.T(c, i18n.MsgDistributorTokenModelForbidden, map[string]any{"Model": modelRequest.Model}))
+					abortWithOpenAiMessage(c, http.StatusServiceUnavailable, i18n.T(c, i18n.MsgDistributorTokenModelForbidden, map[string]any{"Model": modelRequest.Model}))
 					return
 				}
 			}
@@ -91,7 +91,7 @@ func Distribute() func(c *gin.Context) {
 					}
 					if playgroundRequest.Group != "" {
 						if !service.GroupInUserUsableGroups(usingGroup, playgroundRequest.Group) && playgroundRequest.Group != usingGroup {
-							abortWithOpenAiMessage(c, http.StatusForbidden, i18n.T(c, i18n.MsgDistributorGroupAccessDenied))
+							abortWithOpenAiMessage(c, http.StatusServiceUnavailable, i18n.T(c, i18n.MsgDistributorGroupAccessDenied))
 							return
 						}
 						usingGroup = playgroundRequest.Group
@@ -104,7 +104,7 @@ func Distribute() func(c *gin.Context) {
 					if err == nil && preferred != nil {
 						if preferred.Status != common.ChannelStatusEnabled {
 							if service.ShouldSkipRetryAfterChannelAffinityFailure(c) {
-								abortWithOpenAiMessage(c, http.StatusForbidden, i18n.T(c, i18n.MsgDistributorChannelDisabled))
+								abortWithOpenAiMessage(c, http.StatusServiceUnavailable, i18n.T(c, i18n.MsgDistributorChannelDisabled))
 								return
 							}
 						} else if usingGroup == "auto" {
