@@ -84,6 +84,27 @@ func ClaudeHelper(c *gin.Context, info *relaycommon.RelayInfo) (newAPIError *typ
 		info.UpstreamModelName = request.Model
 	}
 
+	// Convert 'developer' role messages to system content, as Claude API only supports 'user' and 'assistant' roles
+	{
+		var filteredMessages []dto.ClaudeMessage
+		for _, msg := range request.Messages {
+			if msg.Role == "developer" {
+				text := msg.GetStringContent()
+				if text != "" {
+					existing := request.ParseSystem()
+					existing = append(existing, dto.ClaudeMediaMessage{
+						Type: dto.ContentTypeText,
+					})
+					existing[len(existing)-1].SetText(text)
+					request.System = existing
+				}
+			} else {
+				filteredMessages = append(filteredMessages, msg)
+			}
+		}
+		request.Messages = filteredMessages
+	}
+
 	if info.ChannelSetting.SystemPrompt != "" {
 		if request.System == nil {
 			request.SetStringSystem(info.ChannelSetting.SystemPrompt)
