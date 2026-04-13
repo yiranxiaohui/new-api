@@ -363,6 +363,35 @@ func WithClaudeError(claudeError ClaudeError, statusCode int, ops ...NewAPIError
 	return e
 }
 
+// HideUpstreamDetail replaces upstream error details with a generic message,
+// preventing provider information leakage to end users.
+// Only applies to upstream error types; local (new_api_error) messages are kept.
+// If customMsg is non-empty it is used as the replacement; otherwise a default is generated.
+// The placeholder {status_code} in customMsg will be replaced with the actual status code.
+func (e *NewAPIError) HideUpstreamDetail(customMsg string) {
+	if e == nil {
+		return
+	}
+	if e.errorType == ErrorTypeNewAPIError {
+		return
+	}
+	genericMsg := strings.TrimSpace(customMsg)
+	if genericMsg == "" {
+		genericMsg = fmt.Sprintf("upstream error (status code: %d)", e.StatusCode)
+	} else {
+		genericMsg = strings.ReplaceAll(genericMsg, "{status_code}", fmt.Sprintf("%d", e.StatusCode))
+	}
+	e.Err = errors.New(genericMsg)
+	switch relay := e.RelayError.(type) {
+	case OpenAIError:
+		relay.Message = genericMsg
+		e.RelayError = relay
+	case ClaudeError:
+		relay.Message = genericMsg
+		e.RelayError = relay
+	}
+}
+
 func IsChannelError(err *NewAPIError) bool {
 	if err == nil {
 		return false

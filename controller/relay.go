@@ -98,6 +98,9 @@ func Relay(c *gin.Context, relayFormat types.RelayFormat) {
 	defer func() {
 		if newAPIError != nil {
 			logger.LogError(c, fmt.Sprintf("relay error: %s", newAPIError.Error()))
+			if operation_setting.HideUpstreamErrors && c.GetInt("role") < common.RoleAdminUser {
+				newAPIError.HideUpstreamDetail(operation_setting.HideUpstreamErrorMessage)
+			}
 			newAPIError.SetMessage(common.MessageWithRequestId(newAPIError.Error(), requestId))
 			switch relayFormat {
 			case types.RelayFormatOpenAIRealtime:
@@ -451,14 +454,26 @@ func RelayMidjourney(c *gin.Context) {
 			mjErr.Result = "当前分组负载已饱和，请稍后再试，或升级账户以提升服务质量。"
 			statusCode = http.StatusTooManyRequests
 		}
+		description := fmt.Sprintf("%s %s", mjErr.Description, mjErr.Result)
+		if operation_setting.HideUpstreamErrors && c.GetInt("role") < common.RoleAdminUser {
+			description = buildHiddenUpstreamMessage(statusCode)
+		}
 		c.JSON(statusCode, gin.H{
-			"description": fmt.Sprintf("%s %s", mjErr.Description, mjErr.Result),
+			"description": description,
 			"type":        "upstream_error",
 			"code":        mjErr.Code,
 		})
 		channelId := c.GetInt("channel_id")
 		logger.LogError(c, fmt.Sprintf("relay error (channel #%d, status code %d): %s", channelId, statusCode, fmt.Sprintf("%s %s", mjErr.Description, mjErr.Result)))
 	}
+}
+
+func buildHiddenUpstreamMessage(statusCode int) string {
+	msg := strings.TrimSpace(operation_setting.HideUpstreamErrorMessage)
+	if msg == "" {
+		return fmt.Sprintf("upstream error (status code: %d)", statusCode)
+	}
+	return strings.ReplaceAll(msg, "{status_code}", fmt.Sprintf("%d", statusCode))
 }
 
 func RelayNotImplemented(c *gin.Context) {
@@ -648,6 +663,9 @@ func RelayTask(c *gin.Context) {
 func respondTaskError(c *gin.Context, taskErr *dto.TaskError) {
 	if taskErr.StatusCode == http.StatusTooManyRequests {
 		taskErr.Message = "当前分组上游负载已饱和，请稍后再试"
+	}
+	if operation_setting.HideUpstreamErrors && !taskErr.LocalError && c.GetInt("role") < common.RoleAdminUser {
+		taskErr.Message = buildHiddenUpstreamMessage(taskErr.StatusCode)
 	}
 	c.JSON(taskErr.StatusCode, taskErr)
 }

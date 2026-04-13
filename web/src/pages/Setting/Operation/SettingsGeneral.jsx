@@ -57,6 +57,8 @@ export default function GeneralSettings(props) {
     DefaultCollapseSidebar: false,
     DemoSiteEnabled: false,
     SelfUseModeEnabled: false,
+    HideUpstreamErrors: false,
+    HideUpstreamErrorMessage: '',
     'token_setting.max_user_tokens': 1000,
   });
   const refForm = useRef();
@@ -390,6 +392,29 @@ export default function GeneralSettings(props) {
                   onChange={handleFieldChange('SelfUseModeEnabled')}
                 />
               </Col>
+              <Col xs={24} sm={12} md={8} lg={8} xl={8}>
+                <Form.Switch
+                  field={'HideUpstreamErrors'}
+                  label={t('屏蔽上游错误信息')}
+                  extraText={t('开启后上游渠道的报错详情将被隐藏，仅返回通用错误信息，防止泄露渠道信息')}
+                  size='default'
+                  checkedText='｜'
+                  uncheckedText='〇'
+                  onChange={handleFieldChange('HideUpstreamErrors')}
+                />
+              </Col>
+              {inputs.HideUpstreamErrors && (
+                <Col xs={24} sm={12} md={8} lg={8} xl={8}>
+                  <Form.Input
+                    field={'HideUpstreamErrorMessage'}
+                    label={t('自定义错误返回信息')}
+                    extraText={t('可用占位符：{status_code}，留空则使用默认信息')}
+                    placeholder={'upstream error (status code: {status_code})'}
+                    onChange={handleFieldChange('HideUpstreamErrorMessage')}
+                    showClear
+                  />
+                </Col>
+              )}
             </Row>
             <Row gutter={16}>
               <Col xs={24} sm={12} md={8} lg={8} xl={8}>
