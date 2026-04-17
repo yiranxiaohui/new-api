@@ -115,6 +115,11 @@ func ClaudeHelper(c *gin.Context, info *relaycommon.RelayInfo) (newAPIError *typ
 		request.Messages = filteredMessages
 	}
 
+	if dropped, filled := request.NormalizeTools(); dropped > 0 || filled > 0 {
+		common.SysLog(fmt.Sprintf("claude tools normalized: dropped_invalid=%d filled_empty_schema=%d model=%s request_id=%s",
+			dropped, filled, request.Model, c.GetString(common.RequestIdKey)))
+	}
+
 	if info.ChannelSetting.SystemPrompt != "" {
 		if request.System == nil {
 			request.SetStringSystem(info.ChannelSetting.SystemPrompt)

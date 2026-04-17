@@ -421,6 +421,129 @@ func (c *ClaudeRequest) GetEfforts() string {
 	return ""
 }
 
+// NormalizeTools 清理 tools / tool_choice 中会导致上游 400 的残缺项：
+// - 用户自定义工具 name 为空 => 丢弃该工具
+// - 用户自定义工具 input_schema 为空 => 填充默认 object schema
+// - tool_choice.type=="tool" 且指向不存在的工具名 => 降级为 auto
+// 返回被丢弃的工具数与被补全 schema 的工具数。
+func (c *ClaudeRequest) NormalizeTools() (dropped int, filledSchema int) {
+	if c.Tools == nil {
+		return
+	}
+	toolsAny, ok := c.Tools.([]any)
+	if !ok {
+		return
+	}
+
+	validNames := make(map[string]struct{})
+	kept := make([]any, 0, len(toolsAny))
+	for _, raw := range toolsAny {
+		switch v := raw.(type) {
+		case map[string]any:
+			if isUserDefinedToolMap(v) {
+				name, _ := v["name"].(string)
+				if strings.TrimSpace(name) == "" {
+					dropped++
+					continue
+				}
+				if isEmptyInputSchemaVal(v["input_schema"]) {
+					v["input_schema"] = map[string]any{
+						"type":       "object",
+						"properties": map[string]any{},
+					}
+					filledSchema++
+				}
+				validNames[name] = struct{}{}
+			} else if name, ok := v["name"].(string); ok && name != "" {
+				validNames[name] = struct{}{}
+			}
+			kept = append(kept, v)
+		case *Tool:
+			if v == nil || strings.TrimSpace(v.Name) == "" {
+				dropped++
+				continue
+			}
+			if len(v.InputSchema) == 0 {
+				v.InputSchema = map[string]any{
+					"type":       "object",
+					"properties": map[string]any{},
+				}
+				filledSchema++
+			}
+			validNames[v.Name] = struct{}{}
+			kept = append(kept, v)
+		case Tool:
+			if strings.TrimSpace(v.Name) == "" {
+				dropped++
+				continue
+			}
+			if len(v.InputSchema) == 0 {
+				v.InputSchema = map[string]any{
+					"type":       "object",
+					"properties": map[string]any{},
+				}
+				filledSchema++
+			}
+			validNames[v.Name] = struct{}{}
+			kept = append(kept, v)
+		case *ClaudeWebSearchTool:
+			if v != nil && v.Name != "" {
+				validNames[v.Name] = struct{}{}
+			}
+			kept = append(kept, v)
+		case ClaudeWebSearchTool:
+			if v.Name != "" {
+				validNames[v.Name] = struct{}{}
+			}
+			kept = append(kept, v)
+		default:
+			kept = append(kept, v)
+		}
+	}
+
+	if len(kept) == 0 {
+		c.Tools = nil
+	} else {
+		c.Tools = kept
+	}
+
+	if c.ToolChoice != nil {
+		if tc, ok := c.ToolChoice.(map[string]any); ok {
+			if tcType, _ := tc["type"].(string); tcType == "tool" {
+				tcName, _ := tc["name"].(string)
+				if _, found := validNames[tcName]; !found {
+					c.ToolChoice = map[string]any{"type": "auto"}
+				}
+			}
+		}
+	}
+	return
+}
+
+// isUserDefinedToolMap 判断一个以 map 表示的工具是否是用户自定义函数工具
+// （而非服务端工具，如 web_search_/computer_/bash_/text_editor_/code_execution_ 等）。
+func isUserDefinedToolMap(m map[string]any) bool {
+	typRaw, ok := m["type"]
+	if !ok {
+		return true
+	}
+	typStr, ok := typRaw.(string)
+	if !ok {
+		return true
+	}
+	return typStr == "" || typStr == "custom" || typStr == "function"
+}
+
+func isEmptyInputSchemaVal(schema any) bool {
+	if schema == nil {
+		return true
+	}
+	if m, ok := schema.(map[string]any); ok {
+		return len(m) == 0
+	}
+	return false
+}
+
 // ProcessTools 处理工具列表，支持类型断言
 func ProcessTools(tools []any) ([]*Tool, []*ClaudeWebSearchTool) {
 	var normalTools []*Tool
