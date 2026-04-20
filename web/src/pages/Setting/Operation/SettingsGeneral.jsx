@@ -404,13 +404,15 @@ export default function GeneralSettings(props) {
                 />
               </Col>
               {inputs.HideUpstreamErrors && (
-                <Col xs={24} sm={12} md={8} lg={8} xl={8}>
-                  <Form.Input
+                <Col xs={24} sm={24} md={24} lg={24} xl={24}>
+                  <Form.TextArea
                     field={'HideUpstreamErrorMessage'}
                     label={t('自定义错误返回信息')}
                     extraText={t('可用占位符：{status_code}，留空则使用默认信息')}
                     placeholder={'upstream error (status code: {status_code})'}
+                    initValue={inputs.HideUpstreamErrorMessage || ''}
                     onChange={handleFieldChange('HideUpstreamErrorMessage')}
+                    autosize={{ minRows: 2, maxRows: 6 }}
                     showClear
                   />
                 </Col>
