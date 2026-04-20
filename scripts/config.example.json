@@ -1,0 +1,11 @@
+{
+  "base": "https://api.yunnet.top",
+  "key": "sk-xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+  "protocol": "openai",
+  "model": "gpt-4o-mini",
+  "prompt": "ping, reply with 'pong' only.",
+  "n": 100,
+  "concurrency": 10,
+  "timeout": 30.0,
+  "non_interactive": false
+}

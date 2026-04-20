@@ -31,3 +31,6 @@ data/
 .gopath
 
 token_estimator_test.go
+
+# local stress-test config (may contain real API keys)
+scripts/config.json
