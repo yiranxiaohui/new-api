@@ -23,6 +23,7 @@ import {
   Card,
   Col,
   Form,
+  Input,
   Row,
   Switch,
   Typography,
@@ -46,6 +47,10 @@ export default function SettingsHeaderNavModules(props) {
       enabled: true,
       requireAuth: false, // 默认不需要登录鉴权
     },
+    chat: {
+      enabled: false,
+      url: '',
+    },
     docs: true,
     about: true,
   });
@@ -54,10 +59,12 @@ export default function SettingsHeaderNavModules(props) {
   function handleHeaderNavModuleChange(moduleKey) {
     return (checked) => {
       const newModules = { ...headerNavModules };
-      if (moduleKey === 'pricing') {
-        // 对于pricing模块，只更新enabled属性
+      if (moduleKey === 'pricing' || moduleKey === 'chat') {
+        // 对象形式的模块只更新 enabled 属性
         newModules[moduleKey] = {
-          ...newModules[moduleKey],
+          ...(typeof newModules[moduleKey] === 'object'
+            ? newModules[moduleKey]
+            : {}),
           enabled: checked,
         };
       } else {
@@ -77,6 +84,16 @@ export default function SettingsHeaderNavModules(props) {
     setHeaderNavModules(newModules);
   }
 
+  // 处理模型对话跳转URL变更
+  function handleChatUrlChange(value) {
+    const newModules = { ...headerNavModules };
+    newModules.chat = {
+      ...(typeof newModules.chat === 'object' ? newModules.chat : {}),
+      url: value,
+    };
+    setHeaderNavModules(newModules);
+  }
+
   // 重置顶栏模块为默认配置
   function resetHeaderNavModules() {
     const defaultModules = {
@@ -85,6 +102,10 @@ export default function SettingsHeaderNavModules(props) {
       pricing: {
         enabled: true,
         requireAuth: false,
+      },
+      chat: {
+        enabled: false,
+        url: '',
       },
       docs: true,
       about: true,
@@ -142,6 +163,14 @@ export default function SettingsHeaderNavModules(props) {
           };
         }
 
+        // 向后兼容：为新增的chat模块补默认值
+        if (!modules.chat || typeof modules.chat !== 'object') {
+          modules.chat = {
+            enabled: false,
+            url: '',
+          };
+        }
+
         setHeaderNavModules(modules);
       } catch (error) {
         // 使用默认配置
@@ -151,6 +180,10 @@ export default function SettingsHeaderNavModules(props) {
           pricing: {
             enabled: true,
             requireAuth: false,
+          },
+          chat: {
+            enabled: false,
+            url: '',
           },
           docs: true,
           about: true,
@@ -177,6 +210,12 @@ export default function SettingsHeaderNavModules(props) {
       title: t('模型广场'),
       description: t('模型定价，需要登录访问'),
       hasSubConfig: true, // 标识该模块有子配置
+    },
+    {
+      key: 'chat',
+      title: t('模型对话'),
+      description: t('自定义模型对话页跳转链接'),
+      hasSubConfig: true,
     },
     {
       key: 'docs',
@@ -245,7 +284,7 @@ export default function SettingsHeaderNavModules(props) {
                   <div style={{ marginLeft: '16px' }}>
                     <Switch
                       checked={
-                        module.key === 'pricing'
+                        module.key === 'pricing' || module.key === 'chat'
                           ? headerNavModules[module.key]?.enabled
                           : headerNavModules[module.key]
                       }
@@ -254,6 +293,51 @@ export default function SettingsHeaderNavModules(props) {
                     />
                   </div>
                 </div>
+
+                {/* 模型对话：URL 配置子区域 */}
+                {module.key === 'chat' &&
+                  headerNavModules.chat?.enabled && (
+                    <div
+                      style={{
+                        borderTop: '1px solid var(--semi-color-border)',
+                        marginTop: '12px',
+                        paddingTop: '12px',
+                      }}
+                    >
+                      <div
+                        style={{
+                          fontWeight: '500',
+                          fontSize: '12px',
+                          color: 'var(--semi-color-text-1)',
+                          marginBottom: '6px',
+                          textAlign: 'left',
+                        }}
+                      >
+                        {t('跳转地址')}
+                      </div>
+                      <Input
+                        value={headerNavModules.chat?.url || ''}
+                        onChange={handleChatUrlChange}
+                        placeholder={t('例如 https://chat.example.com')}
+                        size='default'
+                        showClear
+                      />
+                      <Text
+                        type='secondary'
+                        size='small'
+                        style={{
+                          fontSize: '11px',
+                          color: 'var(--semi-color-text-2)',
+                          lineHeight: '1.4',
+                          display: 'block',
+                          marginTop: '6px',
+                          textAlign: 'left',
+                        }}
+                      >
+                        {t('留空则不显示模型对话入口')}
+                      </Text>
+                    </div>
+                  )}
 
                 {/* 为模型广场添加权限控制子开关 */}
                 {module.key === 'pricing' &&

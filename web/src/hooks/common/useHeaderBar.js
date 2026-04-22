@@ -88,6 +88,17 @@ export const useHeaderBar = ({ onMobileMenuToggle, drawerOpen }) => {
     return false; // 默认不需要登录
   }, [headerNavModules]);
 
+  // 获取模型对话跳转链接（仅在开关开启且URL非空时生效）
+  const chatLink = useMemo(() => {
+    const chat = headerNavModules?.chat;
+    if (!chat) return '';
+    if (typeof chat === 'object') {
+      if (chat.enabled === false) return '';
+      return typeof chat.url === 'string' ? chat.url.trim() : '';
+    }
+    return '';
+  }, [headerNavModules]);
+
   const isConsoleRoute = location.pathname.startsWith('/console');
 
   const theme = useTheme();
@@ -238,6 +249,7 @@ export const useHeaderBar = ({ onMobileMenuToggle, drawerOpen }) => {
     drawerOpen,
     headerNavModules,
     pricingRequireAuth,
+    chatLink,
 
     // Actions
     logout,
