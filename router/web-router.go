@@ -2,7 +2,6 @@ package router
 
 import (
 	"embed"
-	"net/http"
 	"strings"
 
 	"github.com/QuantumNous/new-api/common"
@@ -29,6 +28,15 @@ func SetWebRouter(router *gin.Engine, assets ThemeAssets) {
 	router.Use(gzip.Gzip(gzip.DefaultCompression))
 	router.Use(middleware.GlobalWebRateLimit())
 	router.Use(middleware.Cache())
+
+	// Serve index.html through the dynamic injector so <title> and favicon
+	// reflect the current SystemName / Logo (avoids the "New API" → custom
+	// name flicker on first paint). Must be registered BEFORE static.Serve
+	// so the static handler doesn't ship the embedded index.html verbatim.
+	indexHandler := func(c *gin.Context) { serveIndex(c, assets) }
+	router.GET("/", indexHandler)
+	router.GET("/index.html", indexHandler)
+
 	router.Use(static.Serve("/", themeFS))
 	router.NoRoute(func(c *gin.Context) {
 		c.Set(middleware.RouteTagKey, "web")
@@ -36,11 +44,6 @@ func SetWebRouter(router *gin.Engine, assets ThemeAssets) {
 			controller.RelayNotFound(c)
 			return
 		}
-		c.Header("Cache-Control", "no-cache")
-		if common.GetTheme() == "classic" {
-			c.Data(http.StatusOK, "text/html; charset=utf-8", assets.ClassicIndexPage)
-		} else {
-			c.Data(http.StatusOK, "text/html; charset=utf-8", assets.DefaultIndexPage)
-		}
+		serveIndex(c, assets)
 	})
 }
