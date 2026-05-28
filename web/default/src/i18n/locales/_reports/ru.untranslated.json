@@ -1,0 +1,6 @@
+{
+  "Custom Error Message": "Custom Error Message",
+  "Hide Upstream Errors": "Hide Upstream Errors",
+  "Mask upstream error details for non-admin users to avoid leaking channel information": "Mask upstream error details for non-admin users to avoid leaking channel information",
+  "Supports placeholder {status_code}. Leave blank to use the default message.": "Supports placeholder {status_code}. Leave blank to use the default message."
+}

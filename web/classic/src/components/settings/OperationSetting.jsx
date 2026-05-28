@@ -49,8 +49,6 @@ const OperationSetting = () => {
     DefaultCollapseSidebar: false,
     DemoSiteEnabled: false,
     SelfUseModeEnabled: false,
-    HideUpstreamErrors: false,
-    HideUpstreamErrorMessage: '',
 
     /* 顶栏模块管理 */
     HeaderNavModules: '',

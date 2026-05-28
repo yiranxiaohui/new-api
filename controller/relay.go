@@ -99,8 +99,8 @@ func Relay(c *gin.Context, relayFormat types.RelayFormat) {
 	defer func() {
 		if newAPIError != nil {
 			logger.LogError(c, fmt.Sprintf("relay error: %s", newAPIError.Error()))
-			if operation_setting.HideUpstreamErrors && c.GetInt("role") < common.RoleAdminUser {
-				newAPIError.HideUpstreamDetail(operation_setting.HideUpstreamErrorMessage)
+			if hide, msg := shouldHideUpstreamError(c); hide {
+				newAPIError.HideUpstreamDetail(msg)
 			}
 			newAPIError.SetMessage(common.MessageWithRequestId(newAPIError.Error(), requestId))
 			switch relayFormat {
@@ -461,8 +461,8 @@ func RelayMidjourney(c *gin.Context) {
 			statusCode = http.StatusTooManyRequests
 		}
 		description := fmt.Sprintf("%s %s", mjErr.Description, mjErr.Result)
-		if operation_setting.HideUpstreamErrors && c.GetInt("role") < common.RoleAdminUser {
-			description = buildHiddenUpstreamMessage(statusCode)
+		if hide, msg := shouldHideUpstreamError(c); hide {
+			description = buildHiddenUpstreamMessage(statusCode, msg)
 		}
 		c.JSON(statusCode, gin.H{
 			"description": description,
@@ -474,12 +474,26 @@ func RelayMidjourney(c *gin.Context) {
 	}
 }
 
-func buildHiddenUpstreamMessage(statusCode int) string {
-	msg := strings.TrimSpace(operation_setting.HideUpstreamErrorMessage)
+func buildHiddenUpstreamMessage(statusCode int, customMessage string) string {
+	msg := strings.TrimSpace(customMessage)
 	if msg == "" {
 		return fmt.Sprintf("upstream error (status code: %d)", statusCode)
 	}
 	return strings.ReplaceAll(msg, "{status_code}", fmt.Sprintf("%d", statusCode))
+}
+
+// shouldHideUpstreamError 根据当前请求所选渠道的设置，判断是否需要对非管理员用户隐藏上游错误，
+// 并返回渠道自定义的脱敏文案（可能为空，由调用方/兜底逻辑决定默认）。
+// 若请求尚未选中渠道（如鉴权失败等早期错误），返回 false。
+func shouldHideUpstreamError(c *gin.Context) (bool, string) {
+	if c.GetInt("role") >= common.RoleAdminUser {
+		return false, ""
+	}
+	channelSetting, ok := common.GetContextKeyType[dto.ChannelSettings](c, constant.ContextKeyChannelSetting)
+	if !ok || !channelSetting.HideUpstreamErrors {
+		return false, ""
+	}
+	return true, channelSetting.HideUpstreamErrorMessage
 }
 
 func RelayNotImplemented(c *gin.Context) {
@@ -670,8 +684,10 @@ func respondTaskError(c *gin.Context, taskErr *dto.TaskError) {
 	if taskErr.StatusCode == http.StatusTooManyRequests {
 		taskErr.Message = "当前分组上游负载已饱和，请稍后再试"
 	}
-	if operation_setting.HideUpstreamErrors && !taskErr.LocalError && c.GetInt("role") < common.RoleAdminUser {
-		taskErr.Message = buildHiddenUpstreamMessage(taskErr.StatusCode)
+	if !taskErr.LocalError {
+		if hide, msg := shouldHideUpstreamError(c); hide {
+			taskErr.Message = buildHiddenUpstreamMessage(taskErr.StatusCode, msg)
+		}
 	}
 	c.JSON(taskErr.StatusCode, taskErr)
 }

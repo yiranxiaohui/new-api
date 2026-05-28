@@ -4,7 +4,7 @@
 压测脚本：批量请求 new-api 网关，汇总状态码与错误消息。
 
 用途：
-- 验证自定义错误信息（HideUpstreamErrorMessage）是否真的生效
+- 验证渠道级自定义错误信息（hide_upstream_error_message）是否真的生效
 - 摸一下某个上游/渠道/模型的失败率
 - 对比 OpenAI 协议与 Claude 协议的表现
 
@@ -207,7 +207,7 @@ def summarize(results: list[Result]) -> None:
                                           "invalid_request", "insufficient_user_quota"}]
     if default_hits:
         print(f"\n[探测] 有 {len(default_hits)} 条响应命中默认兜底 'upstream error (status code: N)'。")
-        print("       如果你配了自定义兜底但看到这条，说明 HideUpstreamErrorMessage 可能是空字符串，"
+        print("       如果你在渠道里配了自定义兜底但看到这条，说明 hide_upstream_error_message 可能是空字符串，"
               "或这条错误不是上游类错误（HideUpstreamDetail 对 ErrorTypeNewAPIError 直接跳过）。")
     if custom_hits:
         print(f"\n[探测] 有 {len(custom_hits)} 条响应疑似命中了自定义兜底。示例：")
