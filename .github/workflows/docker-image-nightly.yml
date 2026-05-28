@@ -20,9 +20,6 @@ jobs:
           - arch: amd64
             platform: linux/amd64
             runner: ubuntu-latest
-          - arch: arm64
-            platform: linux/arm64
-            runner: ubuntu-24.04-arm
     runs-on: ${{ matrix.runner }}
 
     permissions:
@@ -102,12 +99,10 @@ jobs:
         run: |
           docker buildx imagetools create \
             -t calciumion/new-api:nightly \
-            calciumion/new-api:nightly-amd64 \
-            calciumion/new-api:nightly-arm64
+            calciumion/new-api:nightly-amd64
 
       - name: Create & push manifest (Docker Hub - versioned nightly)
         run: |
           docker buildx imagetools create \
             -t calciumion/new-api:${VERSION} \
-            calciumion/new-api:${VERSION}-amd64 \
-            calciumion/new-api:${VERSION}-arm64
+            calciumion/new-api:${VERSION}-amd64
