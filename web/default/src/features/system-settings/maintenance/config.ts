@@ -21,6 +21,13 @@ export type HeaderNavAccessConfig = {
   requireAuth: boolean
 }
 
+export type HeaderExternalLinkConfig = {
+  enabled: boolean
+  label: string
+  url: string
+  requireAuth: boolean
+}
+
 export type HeaderNavModulesConfig = {
   home: boolean
   console: boolean
@@ -28,7 +35,8 @@ export type HeaderNavModulesConfig = {
   rankings: HeaderNavAccessConfig
   docs: boolean
   about: boolean
-  [key: string]: boolean | HeaderNavAccessConfig
+  external_links: HeaderExternalLinkConfig[]
+  [key: string]: boolean | HeaderNavAccessConfig | HeaderExternalLinkConfig[]
 }
 
 export type SidebarSectionConfig = {
@@ -51,6 +59,7 @@ export const HEADER_NAV_DEFAULT: HeaderNavModulesConfig = {
   },
   docs: true,
   about: true,
+  external_links: [],
 }
 
 export const SIDEBAR_MODULES_DEFAULT: SidebarModulesAdminConfig = {
@@ -98,7 +107,26 @@ const cloneHeaderNavDefault = (): HeaderNavModulesConfig => ({
   ...HEADER_NAV_DEFAULT,
   pricing: { ...HEADER_NAV_DEFAULT.pricing },
   rankings: { ...HEADER_NAV_DEFAULT.rankings },
+  external_links: [],
 })
+
+const parseExternalLinks = (raw: unknown): HeaderExternalLinkConfig[] => {
+  if (!Array.isArray(raw)) return []
+  const result: HeaderExternalLinkConfig[] = []
+  raw.forEach((entry) => {
+    if (!entry || typeof entry !== 'object') return
+    const record = entry as Record<string, unknown>
+    const url = typeof record.url === 'string' ? record.url.trim() : ''
+    if (!url) return
+    result.push({
+      enabled: toBoolean(record.enabled, true),
+      label: typeof record.label === 'string' ? record.label : '',
+      url,
+      requireAuth: toBoolean(record.requireAuth, false),
+    })
+  })
+  return result
+}
 
 const parseAccessModule = (
   raw: unknown,
@@ -146,6 +174,7 @@ export function parseHeaderNavModules(
       ...base,
       pricing: { ...base.pricing },
       rankings: { ...base.rankings },
+      external_links: [],
     }
 
     Object.entries(parsed).forEach(([key, raw]) => {
@@ -155,6 +184,10 @@ export function parseHeaderNavModules(
       }
       if (key === 'rankings') {
         result.rankings = parseAccessModule(raw, base.rankings)
+        return
+      }
+      if (key === 'external_links') {
+        result.external_links = parseExternalLinks(raw)
         return
       }
 

@@ -99,5 +99,20 @@ export function useTopNavLinks(): TopNavLink[] {
     links.push({ title: t('About'), href: '/about' })
   }
 
+  // Custom external links
+  const externalLinks = modules?.external_links
+  if (Array.isArray(externalLinks)) {
+    externalLinks.forEach((link) => {
+      if (!link?.enabled || !link.url?.trim()) return
+      const requiresAuth = link.requireAuth && !isAuthed
+      links.push({
+        title: link.label?.trim() || link.url,
+        href: link.url,
+        external: true,
+        requiresAuth,
+      })
+    })
+  }
+
   return links
 }

@@ -18,9 +18,10 @@ For commercial licensing, please contact support@quantumnous.com
 */
 import { useEffect, useMemo } from 'react'
 import * as z from 'zod'
-import { useForm } from 'react-hook-form'
+import { useFieldArray, useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { useTranslation } from 'react-i18next'
+import { PlusIcon, Trash2Icon } from 'lucide-react'
 import {
   Form,
   FormControl,
@@ -30,6 +31,8 @@ import {
   FormMessage,
 } from '@/components/ui/form'
 import { Switch } from '@/components/ui/switch'
+import { Input } from '@/components/ui/input'
+import { Button } from '@/components/ui/button'
 import {
   SettingsControlChildren,
   SettingsForm,
@@ -42,9 +45,17 @@ import { SettingsSection } from '../components/settings-section'
 import { useUpdateOption } from '../hooks/use-update-option'
 import {
   HEADER_NAV_DEFAULT,
+  type HeaderExternalLinkConfig,
   type HeaderNavModulesConfig,
   serializeHeaderNavModules,
 } from './config'
+
+const externalLinkSchema = z.object({
+  enabled: z.boolean(),
+  label: z.string(),
+  url: z.string(),
+  requireAuth: z.boolean(),
+})
 
 const headerNavSchema = z.object({
   home: z.boolean(),
@@ -55,9 +66,16 @@ const headerNavSchema = z.object({
   rankingsRequireAuth: z.boolean(),
   docs: z.boolean(),
   about: z.boolean(),
+  externalLinks: z.array(externalLinkSchema),
 })
 
 type HeaderNavFormValues = z.infer<typeof headerNavSchema>
+
+type HeaderNavBooleanKey = {
+  [K in keyof HeaderNavFormValues]: HeaderNavFormValues[K] extends boolean
+    ? K
+    : never
+}[keyof HeaderNavFormValues]
 
 type HeaderNavigationSectionProps = {
   config: HeaderNavModulesConfig
@@ -93,6 +111,14 @@ const toFormValues = (config: HeaderNavModulesConfig): HeaderNavFormValues => ({
     config.about === undefined
       ? HEADER_NAV_DEFAULT.about
       : Boolean(config.about),
+  externalLinks: Array.isArray(config.external_links)
+    ? config.external_links.map((link) => ({
+        enabled: Boolean(link.enabled),
+        label: link.label ?? '',
+        url: link.url ?? '',
+        requireAuth: Boolean(link.requireAuth),
+      }))
+    : [],
 })
 
 export function HeaderNavigationSection({
@@ -108,11 +134,25 @@ export function HeaderNavigationSection({
     defaultValues: formDefaults,
   })
 
+  const externalLinksArray = useFieldArray({
+    control: form.control,
+    name: 'externalLinks',
+  })
+
   useEffect(() => {
     form.reset(formDefaults)
   }, [formDefaults, form])
 
   const onSubmit = async (values: HeaderNavFormValues) => {
+    const externalLinks: HeaderExternalLinkConfig[] = values.externalLinks
+      .map((link) => ({
+        enabled: link.enabled,
+        label: link.label.trim(),
+        url: link.url.trim(),
+        requireAuth: link.requireAuth,
+      }))
+      .filter((link) => link.url !== '')
+
     const payload: HeaderNavModulesConfig = {
       ...config,
       home: values.home,
@@ -129,6 +169,7 @@ export function HeaderNavigationSection({
         enabled: values.rankingsEnabled,
         requireAuth: values.rankingsRequireAuth,
       },
+      external_links: externalLinks,
     }
 
     const serialized = serializeHeaderNavModules(payload)
@@ -147,7 +188,7 @@ export function HeaderNavigationSection({
   }
 
   const simpleModules: Array<{
-    key: keyof HeaderNavFormValues
+    key: HeaderNavBooleanKey
     title: string
     description: string
   }> = [
@@ -174,8 +215,8 @@ export function HeaderNavigationSection({
   ]
 
   const accessModules: Array<{
-    enabledKey: keyof HeaderNavFormValues
-    requireAuthKey: keyof HeaderNavFormValues
+    enabledKey: HeaderNavBooleanKey
+    requireAuthKey: HeaderNavBooleanKey
     requireAuthDependsOn: 'pricingEnabled' | 'rankingsEnabled'
     title: string
     description: string
@@ -240,6 +281,131 @@ export function HeaderNavigationSection({
                 )}
               />
             ))}
+          </div>
+
+          <div className='space-y-3 border-t pt-4'>
+            <div className='flex items-start justify-between gap-3'>
+              <div className='space-y-0.5'>
+                <FormLabel className='text-sm font-medium'>
+                  {t('Custom external links')}
+                </FormLabel>
+                <FormDescription>
+                  {t(
+                    'Append additional links to the header. Saved entries with an empty URL are dropped.'
+                  )}
+                </FormDescription>
+              </div>
+              <Button
+                type='button'
+                variant='outline'
+                size='sm'
+                onClick={() =>
+                  externalLinksArray.append({
+                    enabled: true,
+                    label: '',
+                    url: '',
+                    requireAuth: false,
+                  })
+                }
+              >
+                <PlusIcon className='size-4' />
+                {t('Add link')}
+              </Button>
+            </div>
+
+            {externalLinksArray.fields.length === 0 ? (
+              <p className='text-muted-foreground text-xs'>
+                {t('No custom links configured.')}
+              </p>
+            ) : (
+              <div className='space-y-3'>
+                {externalLinksArray.fields.map((field, index) => (
+                  <div
+                    key={field.id}
+                    className='bg-muted/30 grid gap-3 rounded-md border p-3 md:grid-cols-[auto_1fr_2fr_auto_auto] md:items-end'
+                  >
+                    <FormField
+                      control={form.control}
+                      name={`externalLinks.${index}.enabled`}
+                      render={({ field: f }) => (
+                        <SettingsSwitchItem className='border-0 p-0'>
+                          <SettingsSwitchContent>
+                            <FormLabel className='text-xs'>
+                              {t('Enabled')}
+                            </FormLabel>
+                          </SettingsSwitchContent>
+                          <FormControl>
+                            <Switch
+                              checked={f.value}
+                              onCheckedChange={f.onChange}
+                            />
+                          </FormControl>
+                        </SettingsSwitchItem>
+                      )}
+                    />
+                    <FormField
+                      control={form.control}
+                      name={`externalLinks.${index}.label`}
+                      render={({ field: f }) => (
+                        <div className='space-y-1'>
+                          <FormLabel className='text-xs'>
+                            {t('Label')}
+                          </FormLabel>
+                          <FormControl>
+                            <Input
+                              placeholder={t('e.g., Model Chat')}
+                              {...f}
+                            />
+                          </FormControl>
+                          <FormMessage />
+                        </div>
+                      )}
+                    />
+                    <FormField
+                      control={form.control}
+                      name={`externalLinks.${index}.url`}
+                      render={({ field: f }) => (
+                        <div className='space-y-1'>
+                          <FormLabel className='text-xs'>{t('URL')}</FormLabel>
+                          <FormControl>
+                            <Input placeholder='https://...' {...f} />
+                          </FormControl>
+                          <FormMessage />
+                        </div>
+                      )}
+                    />
+                    <FormField
+                      control={form.control}
+                      name={`externalLinks.${index}.requireAuth`}
+                      render={({ field: f }) => (
+                        <SettingsSwitchItem className='border-0 p-0'>
+                          <SettingsSwitchContent>
+                            <FormLabel className='text-xs'>
+                              {t('Require login')}
+                            </FormLabel>
+                          </SettingsSwitchContent>
+                          <FormControl>
+                            <Switch
+                              checked={f.value}
+                              onCheckedChange={f.onChange}
+                            />
+                          </FormControl>
+                        </SettingsSwitchItem>
+                      )}
+                    />
+                    <Button
+                      type='button'
+                      variant='ghost'
+                      size='icon'
+                      onClick={() => externalLinksArray.remove(index)}
+                      aria-label={t('Remove link')}
+                    >
+                      <Trash2Icon className='size-4' />
+                    </Button>
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
 
           <div className='grid gap-4 lg:grid-cols-2'>

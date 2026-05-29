@@ -22,6 +22,13 @@ export type ModuleAccess = { enabled: boolean; requireAuth: boolean }
 
 export type HeaderNavModule = 'rankings' | 'pricing'
 
+export type HeaderExternalLink = {
+  enabled: boolean
+  label: string
+  url: string
+  requireAuth: boolean
+}
+
 export type HeaderNavModules = {
   home: boolean
   console: boolean
@@ -29,7 +36,8 @@ export type HeaderNavModules = {
   rankings: ModuleAccess
   docs: boolean
   about: boolean
-  [key: string]: boolean | ModuleAccess
+  external_links: HeaderExternalLink[]
+  [key: string]: boolean | ModuleAccess | HeaderExternalLink[]
 }
 
 const DEFAULT_HEADER_NAV_MODULES: HeaderNavModules = {
@@ -39,6 +47,7 @@ const DEFAULT_HEADER_NAV_MODULES: HeaderNavModules = {
   rankings: { enabled: true, requireAuth: false },
   docs: true,
   about: true,
+  external_links: [],
 }
 
 const DEFAULTS: Record<HeaderNavModule, ModuleAccess> = {
@@ -51,7 +60,26 @@ function cloneHeaderNavDefaults(): HeaderNavModules {
     ...DEFAULT_HEADER_NAV_MODULES,
     pricing: { ...DEFAULT_HEADER_NAV_MODULES.pricing },
     rankings: { ...DEFAULT_HEADER_NAV_MODULES.rankings },
+    external_links: [],
   }
+}
+
+function parseExternalLinks(raw: unknown): HeaderExternalLink[] {
+  if (!Array.isArray(raw)) return []
+  const result: HeaderExternalLink[] = []
+  raw.forEach((entry) => {
+    if (!entry || typeof entry !== 'object') return
+    const r = entry as Record<string, unknown>
+    const url = typeof r.url === 'string' ? r.url.trim() : ''
+    if (!url) return
+    result.push({
+      enabled: parseHeaderNavBoolean(r.enabled, true),
+      label: typeof r.label === 'string' ? r.label : '',
+      url,
+      requireAuth: parseHeaderNavBoolean(r.requireAuth, false),
+    })
+  })
+  return result
 }
 
 export function parseHeaderNavBoolean(
@@ -116,6 +144,10 @@ export function parseHeaderNavModules(raw: unknown): HeaderNavModules {
     }
     if (key === 'rankings') {
       result.rankings = parseAccess(value, result.rankings)
+      return
+    }
+    if (key === 'external_links') {
+      result.external_links = parseExternalLinks(value)
       return
     }
 
