@@ -204,3 +204,21 @@ export async function getGroups(): Promise<ApiResponse<string[]>> {
   const res = await api.get('/api/group')
   return res.data
 }
+
+// ============================================================================
+// Payment Compliance Status
+// ============================================================================
+
+export interface PaymentComplianceStatus {
+  payment_compliance_confirmed: boolean
+  payment_compliance_terms_version: string
+}
+
+// Uses the user-scoped topup info endpoint so regular admins (who lack
+// RootAuth on /api/option/) can still read compliance state.
+export async function getPaymentComplianceStatus(): Promise<
+  ApiResponse<PaymentComplianceStatus>
+> {
+  const res = await api.get('/api/user/topup/info')
+  return res.data
+}

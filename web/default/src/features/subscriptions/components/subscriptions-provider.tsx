@@ -17,11 +17,9 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 import React, { useState } from 'react'
+import { useQuery } from '@tanstack/react-query'
 import useDialogState from '@/hooks/use-dialog'
-import {
-  getOptionValue,
-  useSystemOptions,
-} from '@/features/system-settings/hooks/use-system-options'
+import { getPaymentComplianceStatus } from '../api'
 import { type PlanRecord, type SubscriptionsDialogType } from '../types'
 
 const CURRENT_COMPLIANCE_TERMS_VERSION = 'v1'
@@ -47,15 +45,16 @@ export function SubscriptionsProvider({
   const [open, setOpen] = useDialogState<SubscriptionsDialogType>(null)
   const [currentRow, setCurrentRow] = useState<PlanRecord | null>(null)
   const [refreshTrigger, setRefreshTrigger] = useState(0)
-  const { data } = useSystemOptions()
-  const complianceOptions = getOptionValue(data?.data, {
-    'payment_setting.compliance_confirmed': false,
-    'payment_setting.compliance_terms_version': '',
+  const { data } = useQuery({
+    queryKey: ['payment-compliance-status'],
+    queryFn: getPaymentComplianceStatus,
+    staleTime: 5 * 60 * 1000,
   })
-  const complianceConfirmed =
-    complianceOptions['payment_setting.compliance_confirmed'] &&
-    complianceOptions['payment_setting.compliance_terms_version'] ===
-      CURRENT_COMPLIANCE_TERMS_VERSION
+  const complianceConfirmed = Boolean(
+    data?.data?.payment_compliance_confirmed &&
+      data.data.payment_compliance_terms_version ===
+        CURRENT_COMPLIANCE_TERMS_VERSION
+  )
 
   const triggerRefresh = () => setRefreshTrigger((prev) => prev + 1)
 
