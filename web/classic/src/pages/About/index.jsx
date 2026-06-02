@@ -161,7 +161,7 @@ const About = () => {
   );
 
   return (
-    <div className='mt-[60px] px-2'>
+    <div className='classic-page-fill flex flex-col pt-[60px] px-2'>
       {aboutLoaded && about === '' ? (
         <div className='max-w-4xl mx-auto py-8 px-4 sm:px-6 lg:px-8'>
           <div
@@ -178,7 +178,12 @@ const About = () => {
           {about.startsWith('https://') ? (
             <iframe
               src={about}
-              style={{ width: '100%', height: '100vh', border: 'none' }}
+              style={{
+                width: '100%',
+                flex: '1 1 auto',
+                minHeight: 0,
+                border: 'none',
+              }}
             />
           ) : (
             <div
