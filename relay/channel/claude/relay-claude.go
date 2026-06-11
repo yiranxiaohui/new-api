@@ -435,6 +435,11 @@ func RequestOpenAI2ClaudeMessage(c *gin.Context, textRequest dto.GeneralOpenAIRe
 
 	claudeRequest.Prompt = ""
 	claudeRequest.Messages = claudeMessages
+
+	// Opus 4.7/4.8 等模型已移除采样参数与 enabled thinking,
+	// 统一在转换结束后清理,避免 OpenAI 格式客户端透传导致上游 400。
+	helper.NormalizeClaudeSamplingForModel(&claudeRequest)
+
 	return &claudeRequest, nil
 }
 

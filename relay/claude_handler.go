@@ -126,6 +126,9 @@ func ClaudeHelper(c *gin.Context, info *relaycommon.RelayInfo) (newAPIError *typ
 		request.ContextManagement = removeClearThinkingEdits(request.ContextManagement)
 	}
 
+	// Opus 4.7/4.8 等模型已移除采样参数与 enabled thinking,统一清理避免上游 400。
+	helper.NormalizeClaudeSamplingForModel(request)
+
 	// Convert 'developer' role messages to system content, as Claude API only supports 'user' and 'assistant' roles
 	{
 		var filteredMessages []dto.ClaudeMessage
