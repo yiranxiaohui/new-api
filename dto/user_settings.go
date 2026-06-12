@@ -16,6 +16,15 @@ type UserSetting struct {
 	SidebarModules                   string  `json:"sidebar_modules,omitempty"`                      // SidebarModules 左侧边栏模块配置
 	BillingPreference                string  `json:"billing_preference,omitempty"`                   // BillingPreference 扣费策略（订阅/钱包）
 	Language                         string  `json:"language,omitempty"`                             // Language 用户语言偏好 (zh, en)
+	InvoiceTitle                     *InvoiceTitle `json:"invoice_title,omitempty"`                  // 默认发票抬头
+}
+
+// InvoiceTitle 用户默认发票抬头
+type InvoiceTitle struct {
+	TitleType int    `json:"title_type"` // 1=个人 2=企业
+	TitleName string `json:"title_name"`
+	TaxNo     string `json:"tax_no"`
+	Email     string `json:"email"`
 }
 
 var (
