@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	"github.com/QuantumNous/new-api/common"
+	"gorm.io/gorm"
 )
 
 const (
@@ -70,4 +71,84 @@ type InvoiceFile struct {
 
 func GenerateInvoiceNo() string {
 	return fmt.Sprintf("INV%d%s", common.GetTimestamp(), strings.ToUpper(common.GetRandomString(8)))
+}
+
+// InvoiceableOrder 可开票订单（充值/订阅统一视图）
+type InvoiceableOrder struct {
+	OrderType  string  `json:"order_type"`
+	OrderId    int     `json:"order_id"`
+	TradeNo    string  `json:"trade_no"`
+	Money      float64 `json:"money"`
+	CreateTime int64   `json:"create_time"`
+}
+
+// CreateInvoiceWithOrders 事务创建申请并占用订单；金额服务端累加。
+// 撞 (order_type, order_id) 唯一索引时返回 ErrInvoiceOrderOccupied。
+func CreateInvoiceWithOrders(invoice *Invoice, orders []*InvoiceOrder) error {
+	if len(orders) == 0 {
+		return ErrInvoiceNoOrders
+	}
+	invoice.InvoiceNo = GenerateInvoiceNo()
+	invoice.Status = InvoiceStatusPending
+	invoice.CreateTime = common.GetTimestamp()
+	invoice.Money = 0
+	for _, o := range orders {
+		invoice.Money += o.Money
+	}
+	err := DB.Transaction(func(tx *gorm.DB) error {
+		if err := tx.Create(invoice).Error; err != nil {
+			return err
+		}
+		for _, o := range orders {
+			o.InvoiceId = invoice.Id
+			if err := tx.Create(o).Error; err != nil {
+				return err
+			}
+		}
+		return nil
+	})
+	if err != nil {
+		// 三库的唯一约束错误文案不同，统一按占用处理。
+		// 注：invoice_no 撞唯一索引（时间戳+8位随机，概率极低）也会落入此分支，可接受。
+		if strings.Contains(strings.ToLower(err.Error()), "unique") ||
+			strings.Contains(strings.ToLower(err.Error()), "duplicate") {
+			return ErrInvoiceOrderOccupied
+		}
+		return err
+	}
+	return nil
+}
+
+// GetInvoiceableOrders 用户可开票订单：支付成功、金额>0、未被任何申请占用
+func GetInvoiceableOrders(userId int) ([]*InvoiceableOrder, error) {
+	result := make([]*InvoiceableOrder, 0)
+
+	occupiedTopup := DB.Model(&InvoiceOrder{}).Select("order_id").
+		Where("order_type = ?", InvoiceOrderTypeTopup)
+	var topups []*TopUp
+	err := DB.Where("user_id = ? AND status = ? AND money > 0", userId, common.TopUpStatusSuccess).
+		Where("id NOT IN (?)", occupiedTopup).
+		Order("id desc").Find(&topups).Error
+	if err != nil {
+		return nil, err
+	}
+	for _, tp := range topups {
+		result = append(result, &InvoiceableOrder{OrderType: InvoiceOrderTypeTopup,
+			OrderId: tp.Id, TradeNo: tp.TradeNo, Money: tp.Money, CreateTime: tp.CreateTime})
+	}
+
+	occupiedSub := DB.Model(&InvoiceOrder{}).Select("order_id").
+		Where("order_type = ?", InvoiceOrderTypeSubscription)
+	var subs []*SubscriptionOrder
+	err = DB.Where("user_id = ? AND status = ? AND money > 0", userId, common.TopUpStatusSuccess).
+		Where("id NOT IN (?)", occupiedSub).
+		Order("id desc").Find(&subs).Error
+	if err != nil {
+		return nil, err
+	}
+	for _, so := range subs {
+		result = append(result, &InvoiceableOrder{OrderType: InvoiceOrderTypeSubscription,
+			OrderId: so.Id, TradeNo: so.TradeNo, Money: so.Money, CreateTime: so.CreateTime})
+	}
+	return result, nil
 }
