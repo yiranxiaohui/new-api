@@ -108,6 +108,13 @@ func SetApiRouter(router *gin.Engine) {
 				selfRoute.POST("/aff_transfer", controller.TransferAffQuota)
 				selfRoute.PUT("/setting", controller.UpdateUserSetting)
 
+				// Invoice routes
+				selfRoute.GET("/invoice/orders", controller.GetInvoiceableOrders)
+				selfRoute.GET("/invoice/self", controller.GetUserInvoiceList)
+				selfRoute.POST("/invoice", middleware.CriticalRateLimit(), controller.CreateInvoice)
+				selfRoute.DELETE("/invoice/:id", controller.CancelInvoice)
+				selfRoute.GET("/invoice/:id/file", controller.DownloadInvoiceFileUser)
+
 				// 2FA routes
 				selfRoute.GET("/2fa/status", controller.Get2FAStatus)
 				selfRoute.POST("/2fa/setup", controller.Setup2FA)
@@ -372,6 +379,16 @@ func SetApiRouter(router *gin.Engine) {
 			modelsRoute.POST("/", controller.CreateModelMeta)
 			modelsRoute.PUT("/", controller.UpdateModelMeta)
 			modelsRoute.DELETE("/:id", controller.DeleteModelMeta)
+		}
+
+		invoiceRoute := apiRouter.Group("/invoice")
+		invoiceRoute.Use(middleware.AdminAuth())
+		{
+			invoiceRoute.GET("/", controller.GetAllInvoices)
+			invoiceRoute.GET("/:id", controller.GetInvoice)
+			invoiceRoute.GET("/:id/file", controller.DownloadInvoiceFileAdmin)
+			invoiceRoute.POST("/:id/file", controller.UploadInvoiceFile)
+			invoiceRoute.POST("/:id/reject", controller.RejectInvoiceAdmin)
 		}
 
 		// Deployments (model deployment management)
