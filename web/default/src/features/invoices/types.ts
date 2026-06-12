@@ -24,7 +24,7 @@ For commercial licensing, please contact support@quantumnous.com
 export interface AdminInvoiceOrder {
   id: number
   order_type: string
-  order_id: string
+  order_id: number
   trade_no: string
   money: number
 }

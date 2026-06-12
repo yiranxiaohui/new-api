@@ -78,6 +78,14 @@ func CreateInvoice(c *gin.Context) {
 		common.ApiErrorMsg(c, "抬头名称与接收邮箱不能为空")
 		return
 	}
+	if err := common.Validate.Var(req.Email, "required,email"); err != nil {
+		common.ApiErrorMsg(c, "接收邮箱格式无效")
+		return
+	}
+	if len(req.TitleName) > 255 || len(req.TaxNo) > 64 || len(req.Email) > 255 || len(req.Remark) > 1024 {
+		common.ApiErrorMsg(c, "输入内容过长")
+		return
+	}
 	if req.TitleType == model.InvoiceTitleTypeCompany && req.TaxNo == "" {
 		common.ApiErrorMsg(c, "企业抬头必须填写税号")
 		return
