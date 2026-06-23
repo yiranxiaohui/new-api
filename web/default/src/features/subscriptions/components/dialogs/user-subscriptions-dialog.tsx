@@ -53,6 +53,7 @@ import {
   deleteUserSubscription,
 } from '../../api'
 import { formatTimestamp } from '../../lib'
+import { formatQuotaWithCurrency } from '@/lib/currency'
 import type { PlanRecord, UserSubscriptionRecord } from '../../types'
 
 interface Props {
@@ -296,12 +297,14 @@ export function UserSubscriptionsDialog(props: Props) {
                 },
                 {
                   id: 'quota',
-                  header: t('Total Quota'),
+                  header: t('Balance'),
                   cell: (record) => {
                     const sub = record.subscription
                     const total = Number(sub.amount_total || 0)
                     const used = Number(sub.amount_used || 0)
-                    return total > 0 ? `${used}/${total}` : t('Unlimited')
+                    if (total <= 0) return t('Unlimited')
+                    const remaining = Math.max(total - used, 0)
+                    return `${formatQuotaWithCurrency(remaining)} / ${formatQuotaWithCurrency(total)}`
                   },
                 },
                 {
