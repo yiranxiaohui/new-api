@@ -70,4 +70,68 @@ func TestNormalizeClaudeSamplingForModel(t *testing.T) {
 	t.Run("nil request is a no-op", func(t *testing.T) {
 		NormalizeClaudeSamplingForModel(nil)
 	})
+
+	t.Run("opus-4-6 with both temperature and top_p drops top_p", func(t *testing.T) {
+		req := &dto.ClaudeRequest{
+			Model:       "claude-opus-4-6",
+			Temperature: common.GetPointer[float64](0.7),
+			TopP:        common.GetPointer[float64](0.9),
+		}
+		NormalizeClaudeSamplingForModel(req)
+		if req.Temperature == nil || *req.Temperature != 0.7 {
+			t.Fatalf("temperature should be preserved, got %+v", req.Temperature)
+		}
+		if req.TopP != nil {
+			t.Fatalf("top_p should be dropped when both are set, got %+v", req.TopP)
+		}
+	})
+
+	t.Run("opus-4-6 with only temperature is untouched", func(t *testing.T) {
+		req := &dto.ClaudeRequest{
+			Model:       "claude-opus-4-6",
+			Temperature: common.GetPointer[float64](0.7),
+		}
+		NormalizeClaudeSamplingForModel(req)
+		if req.Temperature == nil || *req.Temperature != 0.7 || req.TopP != nil {
+			t.Fatalf("only-temperature request should be unchanged: %+v", req)
+		}
+	})
+
+	t.Run("opus-4-6 with only top_p is untouched", func(t *testing.T) {
+		req := &dto.ClaudeRequest{
+			Model: "claude-opus-4-6",
+			TopP:  common.GetPointer[float64](0.9),
+		}
+		NormalizeClaudeSamplingForModel(req)
+		if req.TopP == nil || *req.TopP != 0.9 || req.Temperature != nil {
+			t.Fatalf("only-top_p request should be unchanged: %+v", req)
+		}
+	})
+
+	t.Run("opus-4-8 with both still strips all (no regression)", func(t *testing.T) {
+		req := &dto.ClaudeRequest{
+			Model:       "claude-opus-4-8",
+			Temperature: common.GetPointer[float64](0.7),
+			TopP:        common.GetPointer[float64](0.9),
+		}
+		NormalizeClaudeSamplingForModel(req)
+		if req.Temperature != nil || req.TopP != nil {
+			t.Fatalf("4.8 should strip both temperature and top_p: %+v", req)
+		}
+	})
+
+	t.Run("generic claude model with both drops top_p", func(t *testing.T) {
+		req := &dto.ClaudeRequest{
+			Model:       "claude-3-5-sonnet",
+			Temperature: common.GetPointer[float64](0.5),
+			TopP:        common.GetPointer[float64](0.8),
+		}
+		NormalizeClaudeSamplingForModel(req)
+		if req.Temperature == nil || *req.Temperature != 0.5 {
+			t.Fatalf("temperature should be preserved for generic model, got %+v", req.Temperature)
+		}
+		if req.TopP != nil {
+			t.Fatalf("top_p should be dropped for generic model when both set, got %+v", req.TopP)
+		}
+	})
 }
