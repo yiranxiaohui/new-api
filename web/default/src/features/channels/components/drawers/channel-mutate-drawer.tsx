@@ -2618,6 +2618,30 @@ export function ChannelMutateDrawer({
                               </FormItem>
                             )}
                           />
+
+                          <FormField
+                            control={form.control}
+                            name='max_concurrency'
+                            render={({ field }) => (
+                              <FormItem>
+                                <FormLabel>{t('Max Concurrency')}</FormLabel>
+                                <FormControl>
+                                  <Input
+                                    type='number'
+                                    placeholder='0'
+                                    {...field}
+                                    onChange={(e) =>
+                                      field.onChange(Number(e.target.value))
+                                    }
+                                  />
+                                </FormControl>
+                                <FormDescription>
+                                  {t(FIELD_DESCRIPTIONS.MAX_CONCURRENCY)}
+                                </FormDescription>
+                                <FormMessage />
+                              </FormItem>
+                            )}
+                          />
                         </div>
 
                         <FormField

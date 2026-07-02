@@ -4844,6 +4844,8 @@
     "Weekly token usage by model since launch": "自上线以来按模型分布的每周 Token 使用量",
     "Weekly Window": "每周窗口",
     "Weight": "权重",
+    "Max Concurrency": "最大并发数",
+    "Maximum concurrent requests allowed, 0 means unlimited": "最大并发请求数，0 表示不限制",
     "Weighted by request count": "按请求数加权",
     "Welcome back!": "欢迎回来！",
     "Welcome to our New API...": "欢迎使用我们的 New API...",

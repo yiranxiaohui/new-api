@@ -4844,6 +4844,8 @@
     "Weekly token usage by model since launch": "Weekly token usage by model since launch",
     "Weekly Window": "Weekly Window",
     "Weight": "Weight",
+    "Max Concurrency": "Max Concurrency",
+    "Maximum concurrent requests allowed, 0 means unlimited": "Maximum concurrent requests allowed, 0 means unlimited",
     "Weighted by request count": "Weighted by request count",
     "Welcome back!": "Welcome back!",
     "Welcome to our New API...": "Welcome to our New API...",
