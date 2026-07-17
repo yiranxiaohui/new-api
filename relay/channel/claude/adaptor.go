@@ -10,6 +10,8 @@ import (
 	"github.com/QuantumNous/new-api/dto"
 	"github.com/QuantumNous/new-api/relay/channel"
 	relaycommon "github.com/QuantumNous/new-api/relay/common"
+	"github.com/QuantumNous/new-api/relay/helper"
+	"github.com/QuantumNous/new-api/service/relayconvert"
 	"github.com/QuantumNous/new-api/setting/model_setting"
 	"github.com/QuantumNous/new-api/types"
 
@@ -95,7 +97,17 @@ func (a *Adaptor) ConvertOpenAIRequest(c *gin.Context, info *relaycommon.RelayIn
 	if request == nil {
 		return nil, errors.New("request is nil")
 	}
-	return RequestOpenAI2ClaudeMessage(c, *request)
+	result, err := relayconvert.ConvertRequest(c, info, types.RelayFormatClaude, request)
+	if err != nil {
+		return nil, err
+	}
+	// 上游已将 OpenAI->Claude 转换迁移到 relayconvert;在此对转换结果补做
+	// 采样参数归一化,保留本 fork 对 Claude 5 家族(Opus 4.7/4.8、Fable/Sonnet-5/Mythos)
+	// 剥除 temperature/top_p/top_k 以及 enabled->adaptive thinking 的行为。
+	if claudeRequest, ok := result.Value.(*dto.ClaudeRequest); ok {
+		helper.NormalizeClaudeSamplingForModel(claudeRequest)
+	}
+	return result.Value, nil
 }
 
 func (a *Adaptor) ConvertRerankRequest(c *gin.Context, relayMode int, request dto.RerankRequest) (any, error) {
