@@ -21,7 +21,7 @@ query = query.Where("trade_no LIKE ? ESCAPE '!'", pattern)
 
 - `TopUp` 表**没有 username 列**，只有 `user_id`（`TopUp.UserId`，`model/topup.go:16`）。
 - `TopUp.Username` 是 `gorm:"-"` 虚拟字段（`model/topup.go:25`），运行时由 `fillTopUpUsernames`（`model/topup.go:29`）从 `User.Username`（`model/user.go:81`）按 `user_id` 批量回填。`SearchAllTopUps` 末尾已调用该回填。
-- 关键词清洗复用 `sanitizeLikePattern`（`model/token.go:88`）：`%` 包裹、`!` 转义、去 `%` 后长度需 ≥2，`ESCAPE '!'` 跨库兼容。
+- 关键词清洗复用 `sanitizeLikePattern`（`model/token.go:88`）：转义 `_`、`!`，去 `%` 后长度需 ≥2，`ESCAPE '!'` 跨库兼容。**注意：`sanitizeLikePattern` 不会自动包裹 `%`——无 `%` 的关键词是精确匹配。** 因此本功能新增 `fuzzyLikePattern`（`model/token.go`）：剥离用户自带 `%`、转义 `_`/`!`、强制 `%keyword%` 包裹、模糊关键词长度需 ≥2，用于管理员这类「总是模糊匹配」的场景。
 - COUNT 安全上限 `searchTopUpCountHardLimit = 10000`（`model/topup.go:266`）。
 
 ## 目标
@@ -33,7 +33,7 @@ query = query.Where("trade_no LIKE ? ESCAPE '!'", pattern)
 1. **仅管理员**：只改管理员链路（`SearchAllTopUps` / `GetAllTopUps` / 管理员视角 UI）。`SearchUserTopUps`（用户端）**不改动**。
 2. **统一关键词**：单个搜索框，关键词同时模糊匹配 `trade_no` OR `username`（任一命中即返回）。
 3. **卡片展示用户名**：管理员视角下，结果卡片在 User ID 徽章旁额外显示用户名徽章。
-4. **用户名模糊匹配**：与订单号一致，用 `%keyword%`，共用同一个 `pattern`。
+4. **模糊匹配**：管理员端订单号与用户名都用 `%keyword%` 包裹后模糊匹配，共用同一个 `pattern`。**这将管理员端订单号搜索从原先的「精确匹配」改为「模糊匹配」**（因 `sanitizeLikePattern` 不自动加 `%`、前端也不加 `%`，旧行为实为精确匹配）；此改动经用户确认为期望行为。用户端 `SearchUserTopUps` 语义不变。
 5. **placeholder 统一文案**：管理员与普通用户都显示「按订单号或用户名搜索…」，实现上不按角色分支。
 
 ## 非目标（YAGNI）
@@ -65,7 +65,7 @@ query = query.Where("trade_no LIKE ? ESCAPE '!'", pattern)
 改为：
 
 ```go
-pattern, perr := sanitizeLikePattern(keyword)
+pattern, perr := fuzzyLikePattern(keyword)
 if perr != nil {
     tx.Rollback()
     return nil, 0, perr
@@ -79,10 +79,29 @@ query = query.Where(
 )
 ```
 
+并在 `model/token.go` 的 `sanitizeLikePattern` 旁新增 `fuzzyLikePattern`：
+
+```go
+// fuzzyLikePattern 构造「包含匹配」的 LIKE 模式：无论用户是否输入 % 通配符，
+// 都对关键词做 %keyword% 的模糊匹配。先剥离用户自带 % 再转义 _/!，
+// 去空白后关键词长度需 >= 2。
+func fuzzyLikePattern(input string) (string, error) {
+    trimmed := strings.TrimSpace(input)
+    trimmed = strings.ReplaceAll(trimmed, "%", "")
+    if len(trimmed) < 2 {
+        return "", errors.New("使用模糊搜索时，关键词长度至少为 2 个字符")
+    }
+    escaped := strings.ReplaceAll(trimmed, "!", "!!")
+    escaped = strings.ReplaceAll(escaped, "_", "!_")
+    return "%" + escaped + "%", nil
+}
+```
+
 要点：
 
 - 用 `tx.Where(...).Or(...)` 包一层，保证 `trade_no LIKE ... OR user_id IN (...)` 作为一个整体分组。
-- 订单号与用户名共用同一个 `pattern`（同一次 `sanitizeLikePattern`）。
+- 订单号与用户名共用同一个 `pattern`（同一次 `fuzzyLikePattern` 的 `%keyword%`）。
+- `fuzzyLikePattern` 强制 `%` 包裹，因此关键词是「包含匹配」而非精确匹配；`_`/`!` 被转义为字面量，避免 `_` 被当作单字符通配符。
 - `Model(&TopUp{})` 不变 → `Count`、`Find`、末尾 `fillTopUpUsernames(topups)` 全部照旧。
 - 跨库安全：纯 GORM 子查询，无硬编码表名/方言函数；`username`/`user_id`/`id` 均非保留字。`ESCAPE '!'` 沿用现有跨库写法。
 - `searchTopUpCountHardLimit` COUNT 上限不变。
@@ -133,14 +152,16 @@ username?: string // 管理员视角由后端 fillTopUpUsernames 回填；用户
 - 建 User 需 `Username/Password/Role/Status/AffCode`（`AffCode` 有 UNIQUE 索引，各用户取不同值）。
 - 建 TopUp 范式见现有测试。
 
-新增 `TestSearchAllTopUps_ByUsername`（表驱动，`testify/require` 做 setup、`assert` 做校验），覆盖核心契约：
+新增 `TestSearchAllTopUps_ByUsername`（子测试驱动，`testify/require` 做 setup、`assert` 做校验），覆盖核心契约：
 
-1. 关键词模糊匹配某用户名 → 返回该用户的订单（且不含其他用户的订单）。
-2. 关键词模糊匹配订单号 → 命中（行为回归，与现状一致）。
-3. 关键词两者都不匹配 → 空结果、total 为 0。
-4. （可选）关键词同时匹配一个用户名和另一条订单的订单号 → 两者都返回、无重复。
+1. 关键词模糊匹配某用户名片段 → 返回该用户的订单（且不含其他用户的订单）。
+2. 关键词完整/部分匹配订单号 → 命中（订单号现在是 `%keyword%` 模糊匹配，部分片段也命中）。
+3. 关键词同时匹配多个用户名（如 `pay` 命中 `alice_pay`/`bob_pay`）→ 全部返回、无重复。
+4. 关键词中的 `_` 被转义为字面量，不作单字符通配符（如 `b_b` 不匹配 `bob_pay`）。
+5. 关键词两者都不匹配 → 空结果、total 为 0。
+6. 单字符关键词被拒绝（`fuzzyLikePattern` 的 ≥2 长度守卫，防止 `%a%` 全表扫描）→ 返回 error。
 
-保护对象是「管理员按用户名搜索订单」这一新契约本身，符合项目「保护真实行为/回归路径」的测试标准；不引入随机/压力/日志断言类无效测试。
+保护对象是「管理员按用户名/订单号模糊搜索订单」这一新契约本身，以及 `_` 转义、最小长度守卫这两个安全不变量，符合项目「保护真实行为/回归路径」的测试标准；不引入随机/压力/日志断言类无效测试。
 
 ### 前端
 
@@ -150,14 +171,15 @@ username?: string // 管理员视角由后端 fillTopUpUsernames 回填；用户
 ## 验收标准
 
 1. 管理员在充值历史搜索框输入某用户名片段 → 列表返回匹配到的所有用户的充值订单。
-2. 输入订单号片段 → 行为与现状一致。
+2. 输入订单号片段（部分即可）→ 管理员端命中该订单（现为模糊匹配）。
 3. 管理员视角结果卡片显示用户名徽章（有用户名时）。
-4. 普通用户端 `/topup/self` 行为与 30 天时间窗口不受影响。
+4. 普通用户端 `/topup/self` 行为与 30 天时间窗口不受影响（`SearchUserTopUps` 未改动，仍为原精确/用户自控 `%` 语义）。
 5. SQLite / MySQL / PostgreSQL 三库均可用（纯 GORM 子查询保证）。
 
 ## 影响文件清单
 
-- `model/topup.go` — `SearchAllTopUps` WHERE 扩展
+- `model/token.go` — 新增 `fuzzyLikePattern`（`%keyword%` 包裹 + `_`/`!` 转义 + 最小长度守卫）
+- `model/topup.go` — `SearchAllTopUps` WHERE 扩展，改用 `fuzzyLikePattern`
 - `model/topup_username_test.go` — 新增 `TestSearchAllTopUps_ByUsername`
 - `web/default/src/features/wallet/types.ts` — `TopupRecord.username`
 - `web/default/src/features/wallet/components/dialogs/billing-history-dialog.tsx` — 用户名徽章 + placeholder

@@ -106,6 +106,22 @@ func sanitizeLikePattern(input string) (string, error) {
 	return input, nil
 }
 
+// fuzzyLikePattern 构造「包含匹配」的 LIKE 模式：无论用户是否输入 % 通配符，
+// 都对关键词做 %keyword% 的模糊匹配。用于管理员搜索这类总是模糊匹配的场景。
+// 先剥离用户自带的 % 再转义，避免与首尾包裹的 % 叠加出非法的 %% 或超量通配符。
+// 去掉首尾空白后，模糊搜索关键词长度必须 >= 2，与 validateLikePattern 的规则一致。
+func fuzzyLikePattern(input string) (string, error) {
+	trimmed := strings.TrimSpace(input)
+	trimmed = strings.ReplaceAll(trimmed, "%", "")
+	if len(trimmed) < 2 {
+		return "", errors.New("使用模糊搜索时，关键词长度至少为 2 个字符")
+	}
+	// 转义 ESCAPE 字符 ! 自身，再转义 _，与 sanitizeLikePattern 保持一致。
+	escaped := strings.ReplaceAll(trimmed, "!", "!!")
+	escaped = strings.ReplaceAll(escaped, "_", "!_")
+	return "%" + escaped + "%", nil
+}
+
 func validateLikePattern(input string) error {
 	// 1. 连续的 % 直接拒绝
 	if strings.Contains(input, "%%") {

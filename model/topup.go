@@ -319,12 +319,20 @@ func SearchAllTopUps(keyword string, pageInfo *common.PageInfo) (topups []*TopUp
 
 	query := tx.Model(&TopUp{})
 	if keyword != "" {
-		pattern, perr := sanitizeLikePattern(keyword)
+		pattern, perr := fuzzyLikePattern(keyword)
 		if perr != nil {
 			tx.Rollback()
 			return nil, 0, perr
 		}
-		query = query.Where("trade_no LIKE ? ESCAPE '!'", pattern)
+		// keyword matches order number OR any user whose username matches.
+		// TopUp has no username column, so resolve matching users via subquery.
+		usernameSub := tx.Model(&User{}).
+			Select("id").
+			Where("username LIKE ? ESCAPE '!'", pattern)
+		query = query.Where(
+			tx.Where("trade_no LIKE ? ESCAPE '!'", pattern).
+				Or("user_id IN (?)", usernameSub),
+		)
 	}
 
 	if err = query.Limit(searchTopUpCountHardLimit).Count(&total).Error; err != nil {
