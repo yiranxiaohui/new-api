@@ -257,6 +257,8 @@ export interface TopupRecord {
   id: number
   /** User ID */
   user_id: number
+  /** Username (admin view only; back-filled by backend) */
+  username?: string
   /** Topup amount (quota) */
   amount: number
   /** Payment amount (actual money paid) */
