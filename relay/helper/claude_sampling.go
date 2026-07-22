@@ -41,6 +41,18 @@ func NormalizeClaudeSamplingForModel(req *dto.ClaudeRequest) {
 		}
 		return
 	}
+	// Claude 的 temperature 允许范围是 0..1(OpenAI 是 0..2),
+	// 客户端误传 >1 会被上游以 "temperature: range: 0..1" 返回 400,
+	// 这里钳到 [0,1] 避免透传后被拒。
+	if req.Temperature != nil {
+		if *req.Temperature > 1 {
+			clamped := 1.0
+			req.Temperature = &clamped
+		} else if *req.Temperature < 0 {
+			clamped := 0.0
+			req.Temperature = &clamped
+		}
+	}
 	// Claude 不允许 temperature 与 top_p 同时指定,否则返回
 	// "`temperature` and `top_p` cannot both be specified for this model"。
 	// 二者都非空时保留 temperature、剥掉 top_p。

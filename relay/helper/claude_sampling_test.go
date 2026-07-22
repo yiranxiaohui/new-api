@@ -158,6 +158,39 @@ func TestNormalizeClaudeSamplingForModel(t *testing.T) {
 		}
 	})
 
+	t.Run("temperature above 1 is clamped to 1", func(t *testing.T) {
+		req := &dto.ClaudeRequest{
+			Model:       "claude-3-5-sonnet",
+			Temperature: common.GetPointer[float64](2),
+		}
+		NormalizeClaudeSamplingForModel(req)
+		if req.Temperature == nil || *req.Temperature != 1 {
+			t.Fatalf("temperature should be clamped to 1, got %+v", req.Temperature)
+		}
+	})
+
+	t.Run("temperature below 0 is clamped to 0", func(t *testing.T) {
+		req := &dto.ClaudeRequest{
+			Model:       "claude-3-5-sonnet",
+			Temperature: common.GetPointer[float64](-0.5),
+		}
+		NormalizeClaudeSamplingForModel(req)
+		if req.Temperature == nil || *req.Temperature != 0 {
+			t.Fatalf("temperature should be clamped to 0, got %+v", req.Temperature)
+		}
+	})
+
+	t.Run("in-range temperature is preserved", func(t *testing.T) {
+		req := &dto.ClaudeRequest{
+			Model:       "claude-3-5-sonnet",
+			Temperature: common.GetPointer[float64](0.9),
+		}
+		NormalizeClaudeSamplingForModel(req)
+		if req.Temperature == nil || *req.Temperature != 0.9 {
+			t.Fatalf("in-range temperature should be preserved, got %+v", req.Temperature)
+		}
+	})
+
 	t.Run("generic claude model with both drops top_p", func(t *testing.T) {
 		req := &dto.ClaudeRequest{
 			Model:       "claude-3-5-sonnet",
