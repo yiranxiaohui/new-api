@@ -90,20 +90,11 @@ func (ij *indexInjector) renderIndex(theme string, base []byte) []byte {
 	return out
 }
 
-// serveIndex writes the rendered index.html for the active theme.
-func serveIndex(c *gin.Context, assets ThemeAssets) {
+// serveIndex writes the rendered index.html with the live SystemName / Logo
+// applied. The classic theme was removed upstream, so there is a single
+// embedded frontend.
+func serveIndex(c *gin.Context, assets WebAssets) {
 	c.Header("Cache-Control", "no-cache")
-	var (
-		theme string
-		base  []byte
-	)
-	if common.GetTheme() == "classic" {
-		theme = "classic"
-		base = assets.ClassicIndexPage
-	} else {
-		theme = "default"
-		base = assets.DefaultIndexPage
-	}
 	c.Data(http.StatusOK, "text/html; charset=utf-8",
-		injector.renderIndex(theme, base))
+		injector.renderIndex("default", assets.IndexPage))
 }
