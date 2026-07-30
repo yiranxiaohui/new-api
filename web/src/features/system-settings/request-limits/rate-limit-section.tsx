@@ -72,6 +72,7 @@ const createRateLimitSchema = (t: (key: string) => string) =>
     ModelRequestRateLimitDurationMinutes: z.number().min(0),
     ModelRequestRateLimitCount: z.number().min(0).max(100000000),
     ModelRequestRateLimitSuccessCount: z.number().min(1).max(100000000),
+    UserMaxConcurrency: z.number().min(0).max(10000),
     ModelRequestRateLimitGroup: z
       .string()
       .optional()
@@ -233,6 +234,36 @@ export function RateLimitSection({ defaultValues }: RateLimitSectionProps) {
                   </FormControl>
                   <FormDescription>
                     {t('Only successful requests')}
+                  </FormDescription>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+          </div>
+
+          <div className='grid gap-4 md:grid-cols-3'>
+            <FormField
+              control={form.control}
+              name='UserMaxConcurrency'
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>{t('User max concurrency')}</FormLabel>
+                  <FormControl>
+                    <Input
+                      type='number'
+                      min={0}
+                      max={10000}
+                      step={1}
+                      {...field}
+                      onChange={(e) =>
+                        field.onChange(parseInt(e.target.value) || 0)
+                      }
+                    />
+                  </FormControl>
+                  <FormDescription>
+                    {t(
+                      'Max in-flight requests per user across relay APIs, 0 = disabled. Applies independently of rate limiting above; per-user overrides are set in the user editor.'
+                    )}
                   </FormDescription>
                   <FormMessage />
                 </FormItem>

@@ -140,6 +140,7 @@ func InitOptionMap() {
 	common.OptionMap["ModelRequestRateLimitDurationMinutes"] = strconv.Itoa(setting.ModelRequestRateLimitDurationMinutes)
 	common.OptionMap["ModelRequestRateLimitSuccessCount"] = strconv.Itoa(setting.ModelRequestRateLimitSuccessCount)
 	common.OptionMap["ModelRequestRateLimitGroup"] = setting.ModelRequestRateLimitGroup2JSONString()
+	common.OptionMap["UserMaxConcurrency"] = strconv.Itoa(setting.UserMaxConcurrency)
 	common.OptionMap["ModelRatio"] = ratio_setting.ModelRatio2JSONString()
 	common.OptionMap["ModelPrice"] = ratio_setting.ModelPrice2JSONString()
 	common.OptionMap["CacheRatio"] = ratio_setting.CacheRatio2JSONString()
@@ -527,6 +528,8 @@ func updateOptionMap(key string, value string) (err error) {
 		setting.ModelRequestRateLimitSuccessCount, _ = strconv.Atoi(value)
 	case "ModelRequestRateLimitGroup":
 		err = setting.UpdateModelRequestRateLimitGroupByJSONString(value)
+	case "UserMaxConcurrency":
+		setting.UserMaxConcurrency, _ = strconv.Atoi(value)
 	case "RetryTimes":
 		common.RetryTimes, _ = strconv.Atoi(value)
 	case "DataExportInterval":

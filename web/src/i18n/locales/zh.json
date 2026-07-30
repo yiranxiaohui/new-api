@@ -5294,6 +5294,10 @@
     "Enter reject reason...": "请输入驳回原因...",
     "Reject Invoice": "驳回发票",
     "Download Invoice File": "下载发票文件",
-    "Re-upload Invoice File": "重新上传发票文件"
+    "Re-upload Invoice File": "重新上传发票文件",
+    "User Max Concurrency": "最大并发数",
+    "Max in-flight requests for this user. 0 follows the global setting, -1 means unlimited.": "该用户同时进行中的请求上限。0 表示跟随全局设置，-1 表示不限制。",
+    "User max concurrency": "用户最大并发数",
+    "Max in-flight requests per user across relay APIs, 0 = disabled. Applies independently of rate limiting above; per-user overrides are set in the user editor.": "每个用户在中转接口上同时进行中的请求上限，0 表示关闭。与上方速率限制相互独立；可在用户编辑抽屉中为单个用户覆盖。"
   }
 }

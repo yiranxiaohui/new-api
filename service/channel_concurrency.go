@@ -30,11 +30,11 @@ func initConcurrencyScripts() {
 	var err error
 	concurrencyAcquireSHA, err = common.RDB.ScriptLoad(ctx, channelConcurrencyAcquireScript).Result()
 	if err != nil {
-		common.SysLog(fmt.Sprintf("Failed to load channel concurrency acquire script: %v", err))
+		common.SysLog(fmt.Sprintf("Failed to load concurrency acquire script: %v", err))
 	}
 	concurrencyReleaseSHA, err = common.RDB.ScriptLoad(ctx, channelConcurrencyReleaseScript).Result()
 	if err != nil {
-		common.SysLog(fmt.Sprintf("Failed to load channel concurrency release script: %v", err))
+		common.SysLog(fmt.Sprintf("Failed to load concurrency release script: %v", err))
 	}
 }
 
@@ -42,23 +42,27 @@ func channelConcurrencyKey(channelId int) string {
 	return fmt.Sprintf("channel_concurrency:%d", channelId)
 }
 
+func userConcurrencyKey(userId int) string {
+	return fmt.Sprintf("user_concurrency:%d", userId)
+}
+
 // --- Memory implementation ---
 
-var memoryConcurrency sync.Map // map[int]*atomic.Int64
+var memoryConcurrency sync.Map // map[string]*atomic.Int64
 
-func getMemoryCounter(channelId int) *atomic.Int64 {
-	val, ok := memoryConcurrency.Load(channelId)
+func getMemoryCounter(key string) *atomic.Int64 {
+	val, ok := memoryConcurrency.Load(key)
 	if ok {
 		return val.(*atomic.Int64)
 	}
 	counter := &atomic.Int64{}
-	actual, _ := memoryConcurrency.LoadOrStore(channelId, counter)
+	actual, _ := memoryConcurrency.LoadOrStore(key, counter)
 	return actual.(*atomic.Int64)
 }
 
-// TryAcquireChannelConcurrency tries to acquire a concurrency slot for the channel.
-// Returns true if acquired, false if the channel is at max concurrency.
-func TryAcquireChannelConcurrency(channelId int, maxConcurrency int) bool {
+// tryAcquireConcurrency acquires one in-flight slot under key, bounded by
+// maxConcurrency. maxConcurrency <= 0 means unlimited. Redis errors fail open.
+func tryAcquireConcurrency(key string, maxConcurrency int) bool {
 	if maxConcurrency <= 0 {
 		return true
 	}
@@ -66,16 +70,15 @@ func TryAcquireChannelConcurrency(channelId int, maxConcurrency int) bool {
 	if common.RedisEnabled {
 		concurrencyScriptOnce.Do(initConcurrencyScripts)
 		ctx := context.Background()
-		result, err := common.RDB.EvalSha(ctx, concurrencyAcquireSHA, []string{channelConcurrencyKey(channelId)}, maxConcurrency).Int()
+		result, err := common.RDB.EvalSha(ctx, concurrencyAcquireSHA, []string{key}, maxConcurrency).Int()
 		if err != nil {
-			common.SysLog(fmt.Sprintf("channel concurrency acquire redis error: %v, falling back to allow", err))
+			common.SysLog(fmt.Sprintf("concurrency acquire redis error (key=%s): %v, falling back to allow", key, err))
 			return true // fail-open
 		}
 		return result == 1
 	}
 
-	// Memory implementation
-	counter := getMemoryCounter(channelId)
+	counter := getMemoryCounter(key)
 	for {
 		current := counter.Load()
 		if current >= int64(maxConcurrency) {
@@ -87,20 +90,20 @@ func TryAcquireChannelConcurrency(channelId int, maxConcurrency int) bool {
 	}
 }
 
-// ReleaseChannelConcurrency releases a concurrency slot for the channel.
-func ReleaseChannelConcurrency(channelId int) {
+// releaseConcurrency releases one in-flight slot under key, never dropping
+// the counter below zero.
+func releaseConcurrency(key string) {
 	if common.RedisEnabled {
 		concurrencyScriptOnce.Do(initConcurrencyScripts)
 		ctx := context.Background()
-		_, err := common.RDB.EvalSha(ctx, concurrencyReleaseSHA, []string{channelConcurrencyKey(channelId)}).Result()
+		_, err := common.RDB.EvalSha(ctx, concurrencyReleaseSHA, []string{key}).Result()
 		if err != nil {
-			common.SysLog(fmt.Sprintf("channel concurrency release redis error: %v", err))
+			common.SysLog(fmt.Sprintf("concurrency release redis error (key=%s): %v", key, err))
 		}
 		return
 	}
 
-	// Memory implementation
-	counter := getMemoryCounter(channelId)
+	counter := getMemoryCounter(key)
 	for {
 		current := counter.Load()
 		if current <= 0 {
@@ -110,6 +113,27 @@ func ReleaseChannelConcurrency(channelId int) {
 			return
 		}
 	}
+}
+
+// TryAcquireChannelConcurrency tries to acquire a concurrency slot for the channel.
+// Returns true if acquired, false if the channel is at max concurrency.
+func TryAcquireChannelConcurrency(channelId int, maxConcurrency int) bool {
+	return tryAcquireConcurrency(channelConcurrencyKey(channelId), maxConcurrency)
+}
+
+// ReleaseChannelConcurrency releases a concurrency slot for the channel.
+func ReleaseChannelConcurrency(channelId int) {
+	releaseConcurrency(channelConcurrencyKey(channelId))
+}
+
+// TryAcquireUserConcurrency tries to acquire an in-flight request slot for the user.
+func TryAcquireUserConcurrency(userId int, maxConcurrency int) bool {
+	return tryAcquireConcurrency(userConcurrencyKey(userId), maxConcurrency)
+}
+
+// ReleaseUserConcurrency releases an in-flight request slot for the user.
+func ReleaseUserConcurrency(userId int) {
+	releaseConcurrency(userConcurrencyKey(userId))
 }
 
 // IsChannelConcurrencyAvailable checks if a channel has available concurrency slots
@@ -130,7 +154,20 @@ func IsChannelConcurrencyAvailable(channelId int, maxConcurrency int) bool {
 		return result < maxConcurrency
 	}
 
-	// Memory implementation
-	counter := getMemoryCounter(channelId)
+	counter := getMemoryCounter(channelConcurrencyKey(channelId))
 	return counter.Load() < int64(maxConcurrency)
+}
+
+// resetConcurrencyCountersForTest clears in-memory counters between tests.
+func resetConcurrencyCountersForTest() {
+	memoryConcurrency.Range(func(key, _ any) bool {
+		memoryConcurrency.Delete(key)
+		return true
+	})
+}
+
+// resetConcurrencyScriptsForTest forces script reload against the current
+// Redis client (tests swap in a fresh miniredis per test).
+func resetConcurrencyScriptsForTest() {
+	concurrencyScriptOnce = sync.Once{}
 }

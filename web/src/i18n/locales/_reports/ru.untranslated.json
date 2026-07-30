@@ -12,5 +12,9 @@
   "Supports placeholder {status_code}. Leave blank to use the default message.": "Supports placeholder {status_code}. Leave blank to use the default message.",
   "User Ratio": "User Ratio",
   "Max Concurrency": "Max Concurrency",
-  "Maximum concurrent requests allowed, 0 means unlimited": "Maximum concurrent requests allowed, 0 means unlimited"
+  "Maximum concurrent requests allowed, 0 means unlimited": "Maximum concurrent requests allowed, 0 means unlimited",
+  "User Max Concurrency": "User Max Concurrency",
+  "Max in-flight requests for this user. 0 follows the global setting, -1 means unlimited.": "Max in-flight requests for this user. 0 follows the global setting, -1 means unlimited.",
+  "User max concurrency": "User max concurrency",
+  "Max in-flight requests per user across relay APIs, 0 = disabled. Applies independently of rate limiting above; per-user overrides are set in the user editor.": "Max in-flight requests per user across relay APIs, 0 = disabled. Applies independently of rate limiting above; per-user overrides are set in the user editor."
 }

@@ -5294,6 +5294,10 @@
     "Enter reject reason...": "Enter reject reason...",
     "Reject Invoice": "Reject Invoice",
     "Download Invoice File": "Download Invoice File",
-    "Re-upload Invoice File": "Re-upload Invoice File"
+    "Re-upload Invoice File": "Re-upload Invoice File",
+    "User Max Concurrency": "User Max Concurrency",
+    "Max in-flight requests for this user. 0 follows the global setting, -1 means unlimited.": "Max in-flight requests for this user. 0 follows the global setting, -1 means unlimited.",
+    "User max concurrency": "User max concurrency",
+    "Max in-flight requests per user across relay APIs, 0 = disabled. Applies independently of rate limiting above; per-user overrides are set in the user editor.": "Max in-flight requests per user across relay APIs, 0 = disabled. Applies independently of rate limiting above; per-user overrides are set in the user editor."
   }
 }

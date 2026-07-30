@@ -60,6 +60,7 @@ export const userSchema = z.object({
   DeletedAt: z.any().nullable().optional(),
   remark: z.string().optional(),
   ratio: z.number().optional(),
+  max_concurrency: z.number().optional(),
   admin_permissions: z
     .record(z.string(), z.record(z.string(), z.boolean()))
     .optional(),
@@ -127,6 +128,7 @@ export interface UserFormData {
   group?: string // Only used when updating user
   remark?: string // Only used when updating user
   ratio?: number // Only used when updating user
+  max_concurrency?: number // Only used when updating user: 0 follow global, -1 unlimited
   admin_permissions?: AdminPermissionMatrix
 }
 

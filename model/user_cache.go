@@ -14,17 +14,18 @@ import (
 const userCacheSchemaVersion = 2
 
 type UserBase struct {
-	Id          int      `json:"id"`
-	Group       string   `json:"group"`
-	Email       string   `json:"email"`
-	Quota       int      `json:"quota"`
-	Status      int      `json:"status"`
-	Role        int      `json:"role"`
-	Username    string   `json:"username"`
-	Setting     string   `json:"setting"`
-	Ratio       *float64 `json:"ratio,omitempty"`
-	AuthVersion int64    `json:"-"`
-	CacheSchema int      `json:"-"`
+	Id             int      `json:"id"`
+	Group          string   `json:"group"`
+	Email          string   `json:"email"`
+	Quota          int      `json:"quota"`
+	Status         int      `json:"status"`
+	Role           int      `json:"role"`
+	Username       string   `json:"username"`
+	Setting        string   `json:"setting"`
+	Ratio          *float64 `json:"ratio,omitempty"`
+	MaxConcurrency *int     `json:"max_concurrency,omitempty"`
+	AuthVersion    int64    `json:"-"`
+	CacheSchema    int      `json:"-"`
 }
 
 func (user *UserBase) WriteContext(c *gin.Context) {
@@ -35,6 +36,16 @@ func (user *UserBase) WriteContext(c *gin.Context) {
 	common.SetContextKey(c, constant.ContextKeyUserName, user.Username)
 	common.SetContextKey(c, constant.ContextKeyUserSetting, user.GetSetting())
 	common.SetContextKey(c, constant.ContextKeyUserRatio, user.GetRatio())
+	common.SetContextKey(c, constant.ContextKeyUserMaxConcurrency, user.GetMaxConcurrency())
+}
+
+// GetMaxConcurrency returns the raw per-user concurrency override: 0 means
+// follow the global default, -1 means unlimited, >0 is the user's own cap.
+func (user *UserBase) GetMaxConcurrency() int {
+	if user.MaxConcurrency == nil {
+		return 0
+	}
+	return *user.MaxConcurrency
 }
 
 func (user *UserBase) GetRatio() float64 {

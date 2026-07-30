@@ -479,6 +479,38 @@ export function UsersMutateDrawer({
                       </FormItem>
                     )}
                   />
+
+                  <FormField
+                    control={form.control}
+                    name='max_concurrency'
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>{t('User Max Concurrency')}</FormLabel>
+                        <FormControl>
+                          <Input
+                            {...field}
+                            type='number'
+                            step='1'
+                            min='-1'
+                            value={field.value ?? ''}
+                            onChange={(e) =>
+                              field.onChange(
+                                e.target.value === ''
+                                  ? undefined
+                                  : Number(e.target.value)
+                              )
+                            }
+                          />
+                        </FormControl>
+                        <FormDescription>
+                          {t(
+                            'Max in-flight requests for this user. 0 follows the global setting, -1 means unlimited.'
+                          )}
+                        </FormDescription>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
                 </SideDrawerSection>
               )}
 
