@@ -96,7 +96,8 @@ type User struct {
 	UsedQuota        int                        `json:"used_quota" gorm:"type:int;default:0;column:used_quota"` // used quota
 	RequestCount     int                        `json:"request_count" gorm:"type:int;default:0;"`               // request number
 	Group            string                     `json:"group" gorm:"type:varchar(64);default:'default'"`
-	Ratio            *float64                   `json:"ratio,omitempty" gorm:"column:ratio"` // per-user billing ratio, nil/<=0 means 1.0
+	Ratio            *float64                   `json:"ratio,omitempty" gorm:"column:ratio"`                     // per-user billing ratio, nil/<=0 means 1.0
+	MaxConcurrency   *int                       `json:"max_concurrency,omitempty" gorm:"column:max_concurrency"` // per-user in-flight request limit: nil/0 follow global, -1 unlimited, >0 override
 	AffCode          string                     `json:"aff_code" gorm:"type:varchar(32);column:aff_code;uniqueIndex"`
 	AffCount         int                        `json:"aff_count" gorm:"type:int;default:0;column:aff_count"`
 	AffQuota         int                        `json:"aff_quota" gorm:"type:int;default:0;column:aff_quota"`           // 邀请剩余额度
@@ -115,17 +116,18 @@ type User struct {
 
 func (user *User) ToBaseUser() *UserBase {
 	cache := &UserBase{
-		Id:          user.Id,
-		Group:       user.Group,
-		Quota:       user.Quota,
-		Status:      user.Status,
-		Role:        user.Role,
-		Username:    user.Username,
-		Setting:     user.Setting,
-		Email:       user.Email,
-		Ratio:       user.Ratio,
-		AuthVersion: user.AuthVersion,
-		CacheSchema: userCacheSchemaVersion,
+		Id:             user.Id,
+		Group:          user.Group,
+		Quota:          user.Quota,
+		Status:         user.Status,
+		Role:           user.Role,
+		Username:       user.Username,
+		Setting:        user.Setting,
+		Email:          user.Email,
+		Ratio:          user.Ratio,
+		MaxConcurrency: user.MaxConcurrency,
+		AuthVersion:    user.AuthVersion,
+		CacheSchema:    userCacheSchemaVersion,
 	}
 	return cache
 }
@@ -848,6 +850,9 @@ func (user *User) EditWithTx(tx *gorm.DB, updatePassword bool) error {
 	}
 	if newUser.Ratio != nil {
 		updates["ratio"] = *newUser.Ratio
+	}
+	if newUser.MaxConcurrency != nil {
+		updates["max_concurrency"] = *newUser.MaxConcurrency
 	}
 
 	current := User{}

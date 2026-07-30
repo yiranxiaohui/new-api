@@ -42,6 +42,12 @@ export const userFormSchema = z.object({
   group: z.string().optional(),
   remark: z.string().optional(),
   ratio: z.number().gt(0, 'Ratio must be greater than 0').max(100).optional(),
+  max_concurrency: z
+    .number()
+    .int()
+    .min(-1, 'Must be -1 (unlimited), 0 (follow global) or a positive cap')
+    .max(10000)
+    .optional(),
   admin_permissions: z
     .record(z.string(), z.record(z.string(), z.boolean()))
     .optional(),
@@ -62,6 +68,7 @@ export const USER_FORM_DEFAULT_VALUES: UserFormValues = {
   group: DEFAULT_GROUP,
   remark: '',
   ratio: 1,
+  max_concurrency: 0,
   // Filled against the backend catalog at render time; see UsersMutateDrawer.
   admin_permissions: {},
 }
@@ -104,6 +111,7 @@ export function transformFormDataToPayload(
     payload.group = data.group
     payload.remark = data.remark || undefined
     payload.ratio = data.ratio ?? 1
+    payload.max_concurrency = data.max_concurrency ?? 0
     payload.id = userId
   }
 
@@ -125,6 +133,7 @@ export function transformUserToFormDefaults(user: User): UserFormValues {
     group: user.group || DEFAULT_GROUP,
     remark: user.remark || '',
     ratio: user.ratio && user.ratio > 0 ? user.ratio : 1,
+    max_concurrency: user.max_concurrency ?? 0,
     admin_permissions: user.admin_permissions ?? {},
   }
 }
