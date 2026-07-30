@@ -18,6 +18,10 @@ var ModelRequestRateLimitGroup = map[string][2]int{}
 // UserMaxConcurrency is the global default cap on a user's in-flight relay
 // requests. 0 disables the limit. Per-user overrides live on users.max_concurrency.
 var UserMaxConcurrency = 0
+
+// UserMaxConcurrencyCap bounds both the global setting and per-user
+// overrides; the admin UI enforces the same range.
+const UserMaxConcurrencyCap = 10000
 var ModelRequestRateLimitMutex sync.RWMutex
 
 func ModelRequestRateLimitGroup2JSONString() string {

@@ -72,16 +72,15 @@ func Relay(c *gin.Context, relayFormat types.RelayFormat) {
 	//originalModel := common.GetContextKeyString(c, constant.ContextKeyOriginalModel)
 
 	var (
-		newAPIError    *types.NewAPIError
-		ws             *websocket.Conn
-		concAcquired   bool
-		concChannelId  int
+		newAPIError *types.NewAPIError
+		ws          *websocket.Conn
+		concRelease func()
 	)
 
 	releaseConcurrency := func() {
-		if concAcquired {
-			service.ReleaseChannelConcurrency(concChannelId)
-			concAcquired = false
+		if concRelease != nil {
+			concRelease()
+			concRelease = nil
 		}
 	}
 	defer releaseConcurrency()
@@ -216,12 +215,12 @@ func Relay(c *gin.Context, relayFormat types.RelayFormat) {
 		// Acquire concurrency slot
 		maxConc := channel.GetMaxConcurrency()
 		if maxConc > 0 {
-			if !service.TryAcquireChannelConcurrency(channel.Id, maxConc) {
+			allowed, release := service.TryAcquireChannelConcurrency(channel.Id, maxConc)
+			if !allowed {
 				// Should rarely happen (filtered during selection), but as a safety net
 				continue
 			}
-			concAcquired = true
-			concChannelId = channel.Id
+			concRelease = release
 		}
 
 		addUsedChannel(c, channel.Id)
@@ -554,13 +553,12 @@ func RelayTask(c *gin.Context) {
 
 	var result *relay.TaskSubmitResult
 	var taskErr *dto.TaskError
-	var taskConcAcquired bool
-	var taskConcChannelId int
+	var taskConcRelease func()
 
 	releaseTaskConcurrency := func() {
-		if taskConcAcquired {
-			service.ReleaseChannelConcurrency(taskConcChannelId)
-			taskConcAcquired = false
+		if taskConcRelease != nil {
+			taskConcRelease()
+			taskConcRelease = nil
 		}
 	}
 	defer releaseTaskConcurrency()
@@ -606,11 +604,11 @@ func RelayTask(c *gin.Context) {
 		// Acquire concurrency slot
 		maxConc := channel.GetMaxConcurrency()
 		if maxConc > 0 {
-			if !service.TryAcquireChannelConcurrency(channel.Id, maxConc) {
+			allowed, release := service.TryAcquireChannelConcurrency(channel.Id, maxConc)
+			if !allowed {
 				continue
 			}
-			taskConcAcquired = true
-			taskConcChannelId = channel.Id
+			taskConcRelease = release
 		}
 
 		addUsedChannel(c, channel.Id)

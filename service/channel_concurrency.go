@@ -6,8 +6,11 @@ import (
 	"fmt"
 	"sync"
 	"sync/atomic"
+	"time"
 
 	"github.com/QuantumNous/new-api/common"
+
+	"github.com/go-redis/redis/v8"
 )
 
 //go:embed channel_concurrency_acquire.lua
@@ -16,27 +19,21 @@ var channelConcurrencyAcquireScript string
 //go:embed channel_concurrency_release.lua
 var channelConcurrencyReleaseScript string
 
+// redis.Script.Run retries with EVAL on NOSCRIPT, so a Redis restart or
+// failover that flushes the script cache self-heals instead of permanently
+// failing every acquire/release open.
 var (
-	concurrencyAcquireSHA string
-	concurrencyReleaseSHA string
-	concurrencyScriptOnce sync.Once
+	concurrencyAcquireScript = redis.NewScript(channelConcurrencyAcquireScript)
+	concurrencyReleaseScript = redis.NewScript(channelConcurrencyReleaseScript)
 )
 
-func initConcurrencyScripts() {
-	if !common.RedisEnabled {
-		return
-	}
-	ctx := context.Background()
-	var err error
-	concurrencyAcquireSHA, err = common.RDB.ScriptLoad(ctx, channelConcurrencyAcquireScript).Result()
-	if err != nil {
-		common.SysLog(fmt.Sprintf("Failed to load concurrency acquire script: %v", err))
-	}
-	concurrencyReleaseSHA, err = common.RDB.ScriptLoad(ctx, channelConcurrencyReleaseScript).Result()
-	if err != nil {
-		common.SysLog(fmt.Sprintf("Failed to load concurrency release script: %v", err))
-	}
-}
+// concurrencySlotTTL mirrors the EXPIRE hardcoded in the acquire Lua script.
+// Held slots refresh it periodically so long-lived streams do not outlive the
+// key (which would reset the counter and void the limit).
+const (
+	concurrencySlotTTL            = 300 * time.Second
+	concurrencyTTLRefreshInterval = 100 * time.Second
+)
 
 func channelConcurrencyKey(channelId int) string {
 	return fmt.Sprintf("channel_concurrency:%d", channelId)
@@ -60,32 +57,34 @@ func getMemoryCounter(key string) *atomic.Int64 {
 	return actual.(*atomic.Int64)
 }
 
-// tryAcquireConcurrency acquires one in-flight slot under key, bounded by
-// maxConcurrency. maxConcurrency <= 0 means unlimited. Redis errors fail open.
-func tryAcquireConcurrency(key string, maxConcurrency int) bool {
+// tryAcquireConcurrency reports whether the request may proceed (allowed) and
+// whether a slot was actually taken (acquired). The two differ on the
+// unlimited and Redis-fail-open paths, where the request proceeds without
+// holding a slot; releasing in those cases would decrement a slot owned by
+// another in-flight request.
+func tryAcquireConcurrency(key string, maxConcurrency int) (allowed bool, acquired bool) {
 	if maxConcurrency <= 0 {
-		return true
+		return true, false
 	}
 
 	if common.RedisEnabled {
-		concurrencyScriptOnce.Do(initConcurrencyScripts)
 		ctx := context.Background()
-		result, err := common.RDB.EvalSha(ctx, concurrencyAcquireSHA, []string{key}, maxConcurrency).Int()
+		result, err := concurrencyAcquireScript.Run(ctx, common.RDB, []string{key}, maxConcurrency).Int()
 		if err != nil {
 			common.SysLog(fmt.Sprintf("concurrency acquire redis error (key=%s): %v, falling back to allow", key, err))
-			return true // fail-open
+			return true, false // fail-open without holding a slot
 		}
-		return result == 1
+		return result == 1, result == 1
 	}
 
 	counter := getMemoryCounter(key)
 	for {
 		current := counter.Load()
 		if current >= int64(maxConcurrency) {
-			return false
+			return false, false
 		}
 		if counter.CompareAndSwap(current, current+1) {
-			return true
+			return true, true
 		}
 	}
 }
@@ -94,16 +93,18 @@ func tryAcquireConcurrency(key string, maxConcurrency int) bool {
 // the counter below zero.
 func releaseConcurrency(key string) {
 	if common.RedisEnabled {
-		concurrencyScriptOnce.Do(initConcurrencyScripts)
 		ctx := context.Background()
-		_, err := common.RDB.EvalSha(ctx, concurrencyReleaseSHA, []string{key}).Result()
-		if err != nil {
+		if err := concurrencyReleaseScript.Run(ctx, common.RDB, []string{key}).Err(); err != nil {
 			common.SysLog(fmt.Sprintf("concurrency release redis error (key=%s): %v", key, err))
 		}
 		return
 	}
 
-	counter := getMemoryCounter(key)
+	val, ok := memoryConcurrency.Load(key)
+	if !ok {
+		return
+	}
+	counter := val.(*atomic.Int64)
 	for {
 		current := counter.Load()
 		if current <= 0 {
@@ -115,25 +116,67 @@ func releaseConcurrency(key string) {
 	}
 }
 
-// TryAcquireChannelConcurrency tries to acquire a concurrency slot for the channel.
-// Returns true if acquired, false if the channel is at max concurrency.
-func TryAcquireChannelConcurrency(channelId int, maxConcurrency int) bool {
-	return tryAcquireConcurrency(channelConcurrencyKey(channelId), maxConcurrency)
+func refreshConcurrencyTTL(key string) {
+	if !common.RedisEnabled {
+		return
+	}
+	if err := common.RDB.Expire(context.Background(), key, concurrencySlotTTL).Err(); err != nil {
+		common.SysLog(fmt.Sprintf("concurrency ttl refresh redis error (key=%s): %v", key, err))
+	}
 }
 
-// ReleaseChannelConcurrency releases a concurrency slot for the channel.
-func ReleaseChannelConcurrency(channelId int) {
-	releaseConcurrency(channelConcurrencyKey(channelId))
+// acquireConcurrencySlot returns whether the request may proceed and, when a
+// slot was actually taken, an idempotent release handle. While the slot is
+// held, the Redis key TTL is refreshed periodically so requests longer than
+// the safety-net TTL (long streams, realtime WebSocket sessions) keep their
+// slot accounted. release is nil when no slot was taken (unlimited limit,
+// Redis fail-open, or rejection).
+func acquireConcurrencySlot(key string, maxConcurrency int) (bool, func()) {
+	allowed, acquired := tryAcquireConcurrency(key, maxConcurrency)
+	if !allowed {
+		return false, nil
+	}
+	if !acquired {
+		return true, nil
+	}
+
+	stop := make(chan struct{})
+	if common.RedisEnabled {
+		go func() {
+			ticker := time.NewTicker(concurrencyTTLRefreshInterval)
+			defer ticker.Stop()
+			for {
+				select {
+				case <-stop:
+					return
+				case <-ticker.C:
+					refreshConcurrencyTTL(key)
+				}
+			}
+		}()
+	}
+
+	var once sync.Once
+	return true, func() {
+		once.Do(func() {
+			close(stop)
+			releaseConcurrency(key)
+		})
+	}
 }
 
-// TryAcquireUserConcurrency tries to acquire an in-flight request slot for the user.
-func TryAcquireUserConcurrency(userId int, maxConcurrency int) bool {
-	return tryAcquireConcurrency(userConcurrencyKey(userId), maxConcurrency)
+// TryAcquireChannelConcurrency tries to acquire a concurrency slot for the
+// channel. It returns whether the request may proceed and a release handle
+// (nil when no slot was taken).
+func TryAcquireChannelConcurrency(channelId int, maxConcurrency int) (bool, func()) {
+	return acquireConcurrencySlot(channelConcurrencyKey(channelId), maxConcurrency)
 }
 
-// ReleaseUserConcurrency releases an in-flight request slot for the user.
-func ReleaseUserConcurrency(userId int) {
-	releaseConcurrency(userConcurrencyKey(userId))
+// TryAcquireUserConcurrency tries to acquire an in-flight request slot for
+// the user. It returns whether the request may proceed and a release handle
+// (nil when no slot was taken).
+func TryAcquireUserConcurrency(userId int, maxConcurrency int) (bool, func()) {
+	return acquireConcurrencySlot(userConcurrencyKey(userId), maxConcurrency)
 }
 
 // IsChannelConcurrencyAvailable checks if a channel has available concurrency slots
@@ -144,7 +187,6 @@ func IsChannelConcurrencyAvailable(channelId int, maxConcurrency int) bool {
 	}
 
 	if common.RedisEnabled {
-		concurrencyScriptOnce.Do(initConcurrencyScripts)
 		ctx := context.Background()
 		result, err := common.RDB.Get(ctx, channelConcurrencyKey(channelId)).Int()
 		if err != nil {
@@ -164,10 +206,4 @@ func resetConcurrencyCountersForTest() {
 		memoryConcurrency.Delete(key)
 		return true
 	})
-}
-
-// resetConcurrencyScriptsForTest forces script reload against the current
-// Redis client (tests swap in a fresh miniredis per test).
-func resetConcurrencyScriptsForTest() {
-	concurrencyScriptOnce = sync.Once{}
 }

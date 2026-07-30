@@ -21,8 +21,8 @@ func TestUserCacheRoundTripsMaxConcurrency(t *testing.T) {
 		name  string
 		value *int
 	}{
-		{name: "override", value: intPtr(5)},
-		{name: "unlimited", value: intPtr(-1)},
+		{name: "override", value: common.GetPointer(5)},
+		{name: "unlimited", value: common.GetPointer(-1)},
 		{name: "follow-global", value: nil},
 	}
 	for _, tt := range tests {
@@ -50,8 +50,4 @@ func TestUserCacheRoundTripsMaxConcurrency(t *testing.T) {
 			}
 		})
 	}
-}
-
-func intPtr(v int) *int {
-	return &v
 }

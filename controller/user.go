@@ -692,8 +692,8 @@ func UpdateUser(c *gin.Context) {
 		common.ApiErrorMsg(c, "user ratio must be in (0, 100]")
 		return
 	}
-	if updatedUser.MaxConcurrency != nil && (*updatedUser.MaxConcurrency < -1 || *updatedUser.MaxConcurrency > 10000) {
-		common.ApiErrorMsg(c, "user max concurrency must be in [-1, 10000]")
+	if updatedUser.MaxConcurrency != nil && (*updatedUser.MaxConcurrency < -1 || *updatedUser.MaxConcurrency > setting.UserMaxConcurrencyCap) {
+		common.ApiErrorMsg(c, fmt.Sprintf("user max concurrency must be in [-1, %d]", setting.UserMaxConcurrencyCap))
 		return
 	}
 	originUser, err := model.GetUserById(updatedUser.Id, false)

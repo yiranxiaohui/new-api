@@ -1,11 +1,11 @@
 package middleware
 
 import (
-	"fmt"
 	"net/http"
 
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/constant"
+	"github.com/QuantumNous/new-api/i18n"
 	"github.com/QuantumNous/new-api/service"
 	"github.com/QuantumNous/new-api/setting"
 
@@ -28,18 +28,21 @@ func UserConcurrencyLimit() gin.HandlerFunc {
 			return
 		}
 
-		userId := c.GetInt("id")
+		userId := c.GetInt(string(constant.ContextKeyUserId))
 		if userId <= 0 {
 			c.Next()
 			return
 		}
 
-		if !service.TryAcquireUserConcurrency(userId, limit) {
+		allowed, release := service.TryAcquireUserConcurrency(userId, limit)
+		if !allowed {
 			abortWithOpenAiMessage(c, http.StatusTooManyRequests,
-				fmt.Sprintf("您已达到并发请求上限：最多 %d 个进行中的请求，请稍后重试", limit))
+				i18n.T(c, i18n.MsgConcurrencyReached, map[string]any{"Max": limit}))
 			return
 		}
-		defer service.ReleaseUserConcurrency(userId)
+		if release != nil {
+			defer release()
+		}
 		c.Next()
 	}
 }

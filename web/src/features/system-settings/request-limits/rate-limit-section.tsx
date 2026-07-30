@@ -239,9 +239,7 @@ export function RateLimitSection({ defaultValues }: RateLimitSectionProps) {
                 </FormItem>
               )}
             />
-          </div>
 
-          <div className='grid gap-4 md:grid-cols-3'>
             <FormField
               control={form.control}
               name='UserMaxConcurrency'

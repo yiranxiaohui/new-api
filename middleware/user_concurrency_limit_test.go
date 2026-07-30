@@ -7,11 +7,13 @@ import (
 
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/constant"
+	"github.com/QuantumNous/new-api/i18n"
 	"github.com/QuantumNous/new-api/service"
 	"github.com/QuantumNous/new-api/setting"
 
 	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func runUserConcurrencyRequest(t *testing.T, userId int, override int) int {
@@ -30,8 +32,16 @@ func runUserConcurrencyRequest(t *testing.T, userId int, override int) int {
 	return recorder.Code
 }
 
+func requireAcquire(t *testing.T, userId int, limit int) {
+	t.Helper()
+	allowed, release := service.TryAcquireUserConcurrency(userId, limit)
+	require.True(t, allowed)
+	require.NotNil(t, release)
+}
+
 func withUserConcurrencyFixture(t *testing.T, globalLimit int) {
 	t.Helper()
+	require.NoError(t, i18n.Init())
 	oldRedisEnabled := common.RedisEnabled
 	oldGlobal := setting.UserMaxConcurrency
 	common.RedisEnabled = false
@@ -55,8 +65,8 @@ func TestUserConcurrencyLimitRejectsAtGlobalCap(t *testing.T) {
 	withUserConcurrencyFixture(t, 2)
 	const userId = 7
 	// Two requests already in flight.
-	assert.True(t, service.TryAcquireUserConcurrency(userId, 2))
-	assert.True(t, service.TryAcquireUserConcurrency(userId, 2))
+	requireAcquire(t, userId, 2)
+	requireAcquire(t, userId, 2)
 
 	assert.Equal(t, http.StatusTooManyRequests, runUserConcurrencyRequest(t, userId, 0))
 
@@ -68,14 +78,14 @@ func TestUserConcurrencyLimitPerUserOverride(t *testing.T) {
 	withUserConcurrencyFixture(t, 5)
 	const userId = 8
 	// Override tightens the limit to 1: one in-flight request blocks the next.
-	assert.True(t, service.TryAcquireUserConcurrency(userId, 1))
+	requireAcquire(t, userId, 1)
 	assert.Equal(t, http.StatusTooManyRequests, runUserConcurrencyRequest(t, userId, 1))
 }
 
 func TestUserConcurrencyLimitUnlimitedOverrideBypassesGlobal(t *testing.T) {
 	withUserConcurrencyFixture(t, 1)
 	const userId = 9
-	assert.True(t, service.TryAcquireUserConcurrency(userId, 1))
+	requireAcquire(t, userId, 1)
 	// -1 override: user ignores the global cap entirely.
 	assert.Equal(t, http.StatusOK, runUserConcurrencyRequest(t, userId, -1))
 }
