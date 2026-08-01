@@ -89,6 +89,8 @@ export interface ChannelSettings {
   system_prompt_override?: boolean
   hide_upstream_errors?: boolean
   hide_upstream_error_message?: string
+  http_protocol?: 'auto' | 'http1' | string
+  http2_connection_shards?: number
 }
 
 export interface ChannelOtherSettings {
