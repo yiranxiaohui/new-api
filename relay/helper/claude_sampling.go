@@ -3,7 +3,7 @@ package helper
 import (
 	"strings"
 
-	"github.com/QuantumNous/new-api/dto"
+	"github.com/QuantumNous/new-api/relaykit/dto"
 )
 
 // claudeModelRejectsSampling 判断模型是否已移除采样参数。

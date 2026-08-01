@@ -6,9 +6,9 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/QuantumNous/new-api/dto"
 	"github.com/QuantumNous/new-api/relay/common"
 	relayconstant "github.com/QuantumNous/new-api/relay/constant"
+	"github.com/QuantumNous/new-api/relaykit/dto"
 	"github.com/QuantumNous/new-api/setting/ratio_setting"
 	"github.com/gin-gonic/gin"
 	"github.com/tidwall/gjson"
@@ -84,19 +84,24 @@ func ModelMappedHelper(c *gin.Context, info *common.RelayInfo, request dto.Reque
 // GetResponseModelName returns the model name that should be shown to the client.
 // When model mapping is active, it returns the original model name the client requested.
 func GetResponseModelName(info *common.RelayInfo) string {
-	if info != nil && info.IsModelMapped {
+	if info == nil {
+		return ""
+	}
+	// ChannelMeta is an embedded pointer and may be unset before channel
+	// selection; promoted-field access would panic.
+	if info.ChannelMeta == nil {
 		return info.OriginModelName
 	}
-	if info != nil {
-		return info.UpstreamModelName
+	if info.IsModelMapped {
+		return info.OriginModelName
 	}
-	return ""
+	return info.UpstreamModelName
 }
 
 // ReplaceResponseModel replaces the "model" field in JSON response with the original model name
 // when model mapping is active. Returns the original data unchanged if no mapping is configured.
 func ReplaceResponseModel(data []byte, info *common.RelayInfo) []byte {
-	if info == nil || !info.IsModelMapped {
+	if info == nil || info.ChannelMeta == nil || !info.IsModelMapped {
 		return data
 	}
 	result := data
@@ -118,7 +123,7 @@ func ReplaceResponseModel(data []byte, info *common.RelayInfo) []byte {
 
 // ReplaceResponseModelStr is the string version of ReplaceResponseModel.
 func ReplaceResponseModelStr(data string, info *common.RelayInfo) string {
-	if info == nil || !info.IsModelMapped {
+	if info == nil || info.ChannelMeta == nil || !info.IsModelMapped {
 		return data
 	}
 	result := data
