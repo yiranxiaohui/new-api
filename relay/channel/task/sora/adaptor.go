@@ -2,6 +2,7 @@ package sora
 
 import (
 	"bytes"
+	"encoding/json"
 	"fmt"
 	"io"
 	"mime/multipart"
@@ -55,29 +56,59 @@ type responseTask struct {
 		Message string `json:"message"`
 		Code    string `json:"code"`
 	} `json:"error,omitempty"`
-	// 兼容 new-api 风格视频上游在查询响应中直接携带成片地址的常见形状
-	URL      string `json:"url,omitempty"`
-	VideoURL string `json:"video_url,omitempty"`
-	Videos   []struct {
-		URL string `json:"url,omitempty"`
-	} `json:"videos,omitempty"`
-	Data *struct {
-		URL string `json:"url,omitempty"`
-	} `json:"data,omitempty"`
+	// 兼容 new-api 风格视频上游在查询响应中直接携带成片地址的常见形状。
+	// 这些字段的实际形状在不同上游间差异较大（字符串/对象/数组都可能出现），
+	// 用 json.RawMessage 承接以避免与 sora/openai 官方响应形状冲突时硬失败，
+	// 具体解析在 firstVideoURL 中按需、容错地进行。
+	URL      json.RawMessage `json:"url,omitempty"`
+	VideoURL json.RawMessage `json:"video_url,omitempty"`
+	Videos   json.RawMessage `json:"videos,omitempty"`
+	Data     json.RawMessage `json:"data,omitempty"`
+	Metadata json.RawMessage `json:"metadata,omitempty"`
+}
+
+// rawString 尝试把 json.RawMessage 解析成非空字符串，形状不匹配时返回空字符串而不是报错。
+func rawString(raw json.RawMessage) string {
+	if len(raw) == 0 {
+		return ""
+	}
+	var s string
+	if err := common.Unmarshal(raw, &s); err != nil {
+		return ""
+	}
+	return s
 }
 
 func (r *responseTask) firstVideoURL() string {
-	if r.URL != "" {
-		return r.URL
+	if s := rawString(r.URL); s != "" {
+		return s
 	}
-	if r.VideoURL != "" {
-		return r.VideoURL
+	if s := rawString(r.VideoURL); s != "" {
+		return s
 	}
-	if len(r.Videos) > 0 && r.Videos[0].URL != "" {
-		return r.Videos[0].URL
+	if len(r.Videos) > 0 {
+		var videos []struct {
+			URL string `json:"url,omitempty"`
+		}
+		if err := common.Unmarshal(r.Videos, &videos); err == nil && len(videos) > 0 && videos[0].URL != "" {
+			return videos[0].URL
+		}
 	}
-	if r.Data != nil && r.Data.URL != "" {
-		return r.Data.URL
+	if len(r.Data) > 0 {
+		var data struct {
+			URL string `json:"url,omitempty"`
+		}
+		if err := common.Unmarshal(r.Data, &data); err == nil && data.URL != "" {
+			return data.URL
+		}
+	}
+	if len(r.Metadata) > 0 {
+		var metadata struct {
+			URL string `json:"url,omitempty"`
+		}
+		if err := common.Unmarshal(r.Metadata, &metadata); err == nil && metadata.URL != "" {
+			return metadata.URL
+		}
 	}
 	return ""
 }

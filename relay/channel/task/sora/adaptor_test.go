@@ -114,8 +114,11 @@ func TestParseTaskResultExtractsVideoURL(t *testing.T) {
 		{"video_url", `{"id":"v1","status":"completed","video_url":"https://cdn.example.com/b.mp4"}`, "https://cdn.example.com/b.mp4"},
 		{"videos array", `{"id":"v1","status":"completed","videos":[{"url":"https://cdn.example.com/c.mp4"}]}`, "https://cdn.example.com/c.mp4"},
 		{"data object url", `{"id":"v1","status":"completed","data":{"url":"https://cdn.example.com/d.mp4"}}`, "https://cdn.example.com/d.mp4"},
+		{"metadata url", `{"id":"v1","status":"completed","metadata":{"url":"https://cdn.example.com/f.mp4"}}`, "https://cdn.example.com/f.mp4"},
 		{"openai sora shape stays empty", `{"id":"video_123","object":"video","status":"completed","progress":100}`, ""},
 		{"processing has no url", `{"id":"v1","status":"processing","progress":50,"url":"https://cdn.example.com/e.mp4"}`, ""},
+		{"data as array does not error", `{"id":"v1","status":"completed","data":[{"foo":"bar"}]}`, ""},
+		{"url as non-string does not error", `{"id":"v1","status":"completed","url":123}`, ""},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

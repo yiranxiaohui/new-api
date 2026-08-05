@@ -14,6 +14,7 @@ import (
 	"github.com/QuantumNous/new-api/constant"
 	"github.com/QuantumNous/new-api/logger"
 	"github.com/QuantumNous/new-api/model"
+	"github.com/QuantumNous/new-api/relay/channel/task/taskcommon"
 	"github.com/QuantumNous/new-api/service"
 	"github.com/QuantumNous/new-api/setting/system_setting"
 
@@ -114,6 +115,17 @@ func VideoProxy(c *gin.Context) {
 	case constant.ChannelTypeOpenAI, constant.ChannelTypeSora:
 		videoURL = fmt.Sprintf("%s/v1/videos/%s/content", baseURL, task.GetUpstreamTaskID())
 		req.Header.Set("Authorization", "Bearer "+channel.Key)
+	case constant.ChannelTypeNewAPIVideo:
+		// New API Video 上游若在任务结果中直接给出成片地址（非我们自己构造的代理地址），
+		// 直接使用该地址（走下面的 SSRF 校验）；否则退回到向上游内容端点发起带鉴权的请求，
+		// 与 OpenAI/Sora 分支保持一致。
+		storedURL := strings.TrimSpace(task.GetResultURL())
+		if storedURL != "" && storedURL != taskcommon.BuildProxyURL(task.TaskID) {
+			videoURL = storedURL
+		} else {
+			videoURL = fmt.Sprintf("%s/v1/videos/%s/content", baseURL, task.GetUpstreamTaskID())
+			req.Header.Set("Authorization", "Bearer "+channel.Key)
+		}
 	default:
 		// Video URL is stored in PrivateData.ResultURL (fallback to FailReason for old data)
 		videoURL = task.GetResultURL()
