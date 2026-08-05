@@ -89,6 +89,9 @@ func validateRemixRequest(c *gin.Context) *dto.TaskError {
 
 func (a *TaskAdaptor) ValidateRequestAndSetAction(c *gin.Context, info *relaycommon.RelayInfo) (taskErr *dto.TaskError) {
 	if info.Action == constant.TaskActionRemix {
+		if a.ChannelType == constant.ChannelTypeNewAPIVideo {
+			return service.TaskErrorWrapperLocal(fmt.Errorf("remix is not supported by this channel type"), "invalid_request", http.StatusBadRequest)
+		}
 		return validateRemixRequest(c)
 	}
 	return relaycommon.ValidateMultipartDirect(c, info)
@@ -96,6 +99,10 @@ func (a *TaskAdaptor) ValidateRequestAndSetAction(c *gin.Context, info *relaycom
 
 // EstimateBilling 根据用户请求的 seconds 和 size 计算 OtherRatios。
 func (a *TaskAdaptor) EstimateBilling(c *gin.Context, info *relaycommon.RelayInfo) map[string]float64 {
+	// New API Video 上游按模型固定按次计费，不做 seconds/size 倍率
+	if a.ChannelType == constant.ChannelTypeNewAPIVideo {
+		return nil
+	}
 	// remix 路径的 OtherRatios 已在 ResolveOriginTask 中设置
 	if info.Action == constant.TaskActionRemix {
 		return nil
@@ -130,6 +137,12 @@ func (a *TaskAdaptor) EstimateBilling(c *gin.Context, info *relaycommon.RelayInf
 }
 
 func (a *TaskAdaptor) BuildRequestURL(info *relaycommon.RelayInfo) (string, error) {
+	if a.ChannelType == constant.ChannelTypeNewAPIVideo {
+		if info.Action == constant.TaskActionRemix {
+			return "", fmt.Errorf("remix is not supported by this channel type")
+		}
+		return fmt.Sprintf("%s/v1/video/generations", a.baseURL), nil
+	}
 	if info.Action == constant.TaskActionRemix {
 		return fmt.Sprintf("%s/v1/videos/%s/remix", a.baseURL, info.OriginTaskID), nil
 	}
