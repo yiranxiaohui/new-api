@@ -1,11 +1,13 @@
 package sora
 
 import (
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"strings"
 	"testing"
 
+	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/constant"
 	relaycommon "github.com/QuantumNous/new-api/relay/common"
 	"github.com/gin-gonic/gin"
@@ -102,6 +104,51 @@ func TestValidateRejectsRemixForNewAPIVideo(t *testing.T) {
 	taskErr := a.ValidateRequestAndSetAction(c, info)
 	require.NotNil(t, taskErr)
 	assert.Equal(t, http.StatusBadRequest, taskErr.StatusCode)
+}
+
+func TestBuildRequestBodyNewAPIVideoAlwaysJSON(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	tests := []struct {
+		name        string
+		contentType string
+	}{
+		{"json submit", "application/json"},
+		{"multipart submit", "multipart/form-data; boundary=x"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			a := newTestAdaptor(constant.ChannelTypeNewAPIVideo)
+			c, _ := gin.CreateTestContext(httptest.NewRecorder())
+			c.Request = httptest.NewRequest(http.MethodPost, "/v1/videos", strings.NewReader("ignored"))
+			c.Request.Header.Set("Content-Type", tt.contentType)
+			c.Set("task_request", relaycommon.TaskSubmitReq{
+				Model:   "veo3.1",
+				Prompt:  "a cute cat",
+				Seconds: "8",
+				Size:    "1280x720",
+			})
+			info := &relaycommon.RelayInfo{
+				ChannelMeta:   &relaycommon.ChannelMeta{ChannelType: constant.ChannelTypeNewAPIVideo, UpstreamModelName: "veo3.1-fast"},
+				TaskRelayInfo: &relaycommon.TaskRelayInfo{},
+			}
+
+			body, err := a.BuildRequestBody(c, info)
+			require.NoError(t, err)
+			raw, err := io.ReadAll(body)
+			require.NoError(t, err)
+
+			var got map[string]any
+			require.NoError(t, common.Unmarshal(raw, &got))
+			assert.Equal(t, "veo3.1-fast", got["model"])
+			assert.Equal(t, "a cute cat", got["prompt"])
+			assert.Equal(t, "8", got["seconds"])
+			assert.Equal(t, "1280x720", got["size"])
+
+			req := httptest.NewRequest(http.MethodPost, "https://upstream.example.com/v1/video/generations", nil)
+			require.NoError(t, a.BuildRequestHeader(c, req, info))
+			assert.Equal(t, "application/json", req.Header.Get("Content-Type"))
+		})
+	}
 }
 
 func TestParseTaskResultExtractsVideoURL(t *testing.T) {

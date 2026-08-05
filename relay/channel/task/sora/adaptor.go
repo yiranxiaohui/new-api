@@ -208,11 +208,19 @@ func (a *TaskAdaptor) BuildRequestURL(info *relaycommon.RelayInfo) (string, erro
 // BuildRequestHeader sets required headers.
 func (a *TaskAdaptor) BuildRequestHeader(c *gin.Context, req *http.Request, info *relaycommon.RelayInfo) error {
 	req.Header.Set("Authorization", "Bearer "+a.apiKey)
+	if a.ChannelType == constant.ChannelTypeNewAPIVideo {
+		// 该协议上游只接受 JSON；BuildRequestBody 已将请求统一序列化为 JSON
+		req.Header.Set("Content-Type", "application/json")
+		return nil
+	}
 	req.Header.Set("Content-Type", c.Request.Header.Get("Content-Type"))
 	return nil
 }
 
 func (a *TaskAdaptor) BuildRequestBody(c *gin.Context, info *relaycommon.RelayInfo) (io.Reader, error) {
+	if a.ChannelType == constant.ChannelTypeNewAPIVideo {
+		return buildJSONTaskBody(c, info)
+	}
 	storage, err := common.GetBodyStorage(c)
 	if err != nil {
 		return nil, errors.Wrap(err, "get_request_body_failed")
@@ -286,6 +294,22 @@ func (a *TaskAdaptor) BuildRequestBody(c *gin.Context, info *relaycommon.RelayIn
 	}
 
 	return common.ReaderOnly(storage), nil
+}
+
+// buildJSONTaskBody 将已校验的任务请求统一序列化为 JSON 上游请求体。
+// New API Video 协议上游只接受 JSON，客户端却可能以 multipart 表单提交
+// （OpenAI /v1/videos 官方格式），直接透传表单体会被上游 400 拒绝。
+func buildJSONTaskBody(c *gin.Context, info *relaycommon.RelayInfo) (io.Reader, error) {
+	req, err := relaycommon.GetTaskRequest(c)
+	if err != nil {
+		return nil, errors.Wrap(err, "get_task_request_failed")
+	}
+	req.Model = info.UpstreamModelName
+	body, err := common.Marshal(req)
+	if err != nil {
+		return nil, errors.Wrap(err, "marshal_task_request_failed")
+	}
+	return bytes.NewReader(body), nil
 }
 
 // DoRequest delegates to common helper.
