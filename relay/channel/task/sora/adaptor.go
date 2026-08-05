@@ -2,6 +2,7 @@ package sora
 
 import (
 	"bytes"
+	"encoding/json"
 	"fmt"
 	"io"
 	"mime/multipart"
@@ -55,6 +56,61 @@ type responseTask struct {
 		Message string `json:"message"`
 		Code    string `json:"code"`
 	} `json:"error,omitempty"`
+	// 兼容 new-api 风格视频上游在查询响应中直接携带成片地址的常见形状。
+	// 这些字段的实际形状在不同上游间差异较大（字符串/对象/数组都可能出现），
+	// 用 json.RawMessage 承接以避免与 sora/openai 官方响应形状冲突时硬失败，
+	// 具体解析在 firstVideoURL 中按需、容错地进行。
+	URL      json.RawMessage `json:"url,omitempty"`
+	VideoURL json.RawMessage `json:"video_url,omitempty"`
+	Videos   json.RawMessage `json:"videos,omitempty"`
+	Data     json.RawMessage `json:"data,omitempty"`
+	Metadata json.RawMessage `json:"metadata,omitempty"`
+}
+
+// rawString 尝试把 json.RawMessage 解析成非空字符串，形状不匹配时返回空字符串而不是报错。
+func rawString(raw json.RawMessage) string {
+	if len(raw) == 0 {
+		return ""
+	}
+	var s string
+	if err := common.Unmarshal(raw, &s); err != nil {
+		return ""
+	}
+	return s
+}
+
+func (r *responseTask) firstVideoURL() string {
+	if s := rawString(r.URL); s != "" {
+		return s
+	}
+	if s := rawString(r.VideoURL); s != "" {
+		return s
+	}
+	if len(r.Videos) > 0 {
+		var videos []struct {
+			URL string `json:"url,omitempty"`
+		}
+		if err := common.Unmarshal(r.Videos, &videos); err == nil && len(videos) > 0 && videos[0].URL != "" {
+			return videos[0].URL
+		}
+	}
+	if len(r.Data) > 0 {
+		var data struct {
+			URL string `json:"url,omitempty"`
+		}
+		if err := common.Unmarshal(r.Data, &data); err == nil && data.URL != "" {
+			return data.URL
+		}
+	}
+	if len(r.Metadata) > 0 {
+		var metadata struct {
+			URL string `json:"url,omitempty"`
+		}
+		if err := common.Unmarshal(r.Metadata, &metadata); err == nil && metadata.URL != "" {
+			return metadata.URL
+		}
+	}
+	return ""
 }
 
 // ============================
@@ -89,6 +145,9 @@ func validateRemixRequest(c *gin.Context) *dto.TaskError {
 
 func (a *TaskAdaptor) ValidateRequestAndSetAction(c *gin.Context, info *relaycommon.RelayInfo) (taskErr *dto.TaskError) {
 	if info.Action == constant.TaskActionRemix {
+		if a.ChannelType == constant.ChannelTypeNewAPIVideo {
+			return service.TaskErrorWrapperLocal(fmt.Errorf("remix is not supported by this channel type"), "invalid_request", http.StatusBadRequest)
+		}
 		return validateRemixRequest(c)
 	}
 	return relaycommon.ValidateMultipartDirect(c, info)
@@ -96,6 +155,10 @@ func (a *TaskAdaptor) ValidateRequestAndSetAction(c *gin.Context, info *relaycom
 
 // EstimateBilling 根据用户请求的 seconds 和 size 计算 OtherRatios。
 func (a *TaskAdaptor) EstimateBilling(c *gin.Context, info *relaycommon.RelayInfo) map[string]float64 {
+	// New API Video 上游按模型固定按次计费，不做 seconds/size 倍率
+	if a.ChannelType == constant.ChannelTypeNewAPIVideo {
+		return nil
+	}
 	// remix 路径的 OtherRatios 已在 ResolveOriginTask 中设置
 	if info.Action == constant.TaskActionRemix {
 		return nil
@@ -130,6 +193,12 @@ func (a *TaskAdaptor) EstimateBilling(c *gin.Context, info *relaycommon.RelayInf
 }
 
 func (a *TaskAdaptor) BuildRequestURL(info *relaycommon.RelayInfo) (string, error) {
+	if a.ChannelType == constant.ChannelTypeNewAPIVideo {
+		if info.Action == constant.TaskActionRemix {
+			return "", fmt.Errorf("remix is not supported by this channel type")
+		}
+		return fmt.Sprintf("%s/v1/video/generations", a.baseURL), nil
+	}
 	if info.Action == constant.TaskActionRemix {
 		return fmt.Sprintf("%s/v1/videos/%s/remix", a.baseURL, info.OriginTaskID), nil
 	}
@@ -304,7 +373,9 @@ func (a *TaskAdaptor) ParseTaskResult(respBody []byte) (*relaycommon.TaskInfo, e
 		taskResult.Status = model.TaskStatusInProgress
 	case "completed":
 		taskResult.Status = model.TaskStatusSuccess
-		// Url intentionally left empty — the caller constructs the proxy URL using the public task ID
+		// 上游直接给出成片地址时透出（new-api 风格上游）；否则留空，
+		// 由调用方用公开 task ID 构造 content 代理地址（OpenAI Sora 官方行为）
+		taskResult.Url = resTask.firstVideoURL()
 	case "failed", "cancelled":
 		taskResult.Status = model.TaskStatusFailure
 		if resTask.Error != nil {
