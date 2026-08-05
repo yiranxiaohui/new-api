@@ -55,6 +55,31 @@ type responseTask struct {
 		Message string `json:"message"`
 		Code    string `json:"code"`
 	} `json:"error,omitempty"`
+	// 兼容 new-api 风格视频上游在查询响应中直接携带成片地址的常见形状
+	URL      string `json:"url,omitempty"`
+	VideoURL string `json:"video_url,omitempty"`
+	Videos   []struct {
+		URL string `json:"url,omitempty"`
+	} `json:"videos,omitempty"`
+	Data *struct {
+		URL string `json:"url,omitempty"`
+	} `json:"data,omitempty"`
+}
+
+func (r *responseTask) firstVideoURL() string {
+	if r.URL != "" {
+		return r.URL
+	}
+	if r.VideoURL != "" {
+		return r.VideoURL
+	}
+	if len(r.Videos) > 0 && r.Videos[0].URL != "" {
+		return r.Videos[0].URL
+	}
+	if r.Data != nil && r.Data.URL != "" {
+		return r.Data.URL
+	}
+	return ""
 }
 
 // ============================
@@ -317,7 +342,9 @@ func (a *TaskAdaptor) ParseTaskResult(respBody []byte) (*relaycommon.TaskInfo, e
 		taskResult.Status = model.TaskStatusInProgress
 	case "completed":
 		taskResult.Status = model.TaskStatusSuccess
-		// Url intentionally left empty — the caller constructs the proxy URL using the public task ID
+		// 上游直接给出成片地址时透出（new-api 风格上游）；否则留空，
+		// 由调用方用公开 task ID 构造 content 代理地址（OpenAI Sora 官方行为）
+		taskResult.Url = resTask.firstVideoURL()
 	case "failed", "cancelled":
 		taskResult.Status = model.TaskStatusFailure
 		if resTask.Error != nil {

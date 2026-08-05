@@ -103,3 +103,26 @@ func TestValidateRejectsRemixForNewAPIVideo(t *testing.T) {
 	require.NotNil(t, taskErr)
 	assert.Equal(t, http.StatusBadRequest, taskErr.StatusCode)
 }
+
+func TestParseTaskResultExtractsVideoURL(t *testing.T) {
+	tests := []struct {
+		name    string
+		body    string
+		wantURL string
+	}{
+		{"top-level url", `{"id":"v1","status":"completed","url":"https://cdn.example.com/a.mp4"}`, "https://cdn.example.com/a.mp4"},
+		{"video_url", `{"id":"v1","status":"completed","video_url":"https://cdn.example.com/b.mp4"}`, "https://cdn.example.com/b.mp4"},
+		{"videos array", `{"id":"v1","status":"completed","videos":[{"url":"https://cdn.example.com/c.mp4"}]}`, "https://cdn.example.com/c.mp4"},
+		{"data object url", `{"id":"v1","status":"completed","data":{"url":"https://cdn.example.com/d.mp4"}}`, "https://cdn.example.com/d.mp4"},
+		{"openai sora shape stays empty", `{"id":"video_123","object":"video","status":"completed","progress":100}`, ""},
+		{"processing has no url", `{"id":"v1","status":"processing","progress":50,"url":"https://cdn.example.com/e.mp4"}`, ""},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			a := &TaskAdaptor{}
+			taskInfo, err := a.ParseTaskResult([]byte(tt.body))
+			require.NoError(t, err)
+			assert.Equal(t, tt.wantURL, taskInfo.Url)
+		})
+	}
+}
