@@ -293,7 +293,7 @@ func (a *TaskAdaptor) BuildRequestBody(c *gin.Context, info *relaycommon.RelayIn
 		return &buf, nil
 	}
 
-	return common.ReaderOnly(storage), nil
+	return common.NewReplayableBodyReader(storage), nil
 }
 
 // buildJSONTaskBody 将已校验的任务请求统一序列化为 JSON 上游请求体。
