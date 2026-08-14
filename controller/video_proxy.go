@@ -14,7 +14,6 @@ import (
 	"github.com/QuantumNous/new-api/constant"
 	"github.com/QuantumNous/new-api/logger"
 	"github.com/QuantumNous/new-api/model"
-	"github.com/QuantumNous/new-api/relay/channel/task/taskcommon"
 	"github.com/QuantumNous/new-api/service"
 	"github.com/QuantumNous/new-api/setting/system_setting"
 
@@ -29,6 +28,49 @@ func videoProxyError(c *gin.Context, status int, errType, message string) {
 			"type":    errType,
 		},
 	})
+}
+
+// channelBackedVideoContentURL resolves video content endpoints that should be
+// fetched through the operator-configured channel origin. Some OpenAI-compatible
+// upstreams return an absolute URL for their own /content endpoint; rebuilding
+// it from the channel base avoids trusting unusable loopback/private addresses.
+func channelBackedVideoContentURL(channelType int, baseURL string, task *model.Task) (string, bool) {
+	upstreamTaskID := strings.TrimSpace(task.GetUpstreamTaskID())
+	if upstreamTaskID == "" {
+		return "", false
+	}
+
+	buildURL := func() string {
+		return fmt.Sprintf(
+			"%s/v1/videos/%s/content",
+			strings.TrimRight(baseURL, "/"),
+			url.PathEscape(upstreamTaskID),
+		)
+	}
+
+	switch channelType {
+	case constant.ChannelTypeOpenAI, constant.ChannelTypeSora:
+		return buildURL(), true
+	case constant.ChannelTypeXai, constant.ChannelTypeNewAPIVideo:
+		storedURL := strings.TrimSpace(task.GetResultURL())
+		if storedURL == "" || isVideoContentEndpoint(storedURL, upstreamTaskID) || isVideoContentEndpoint(storedURL, task.TaskID) {
+			return buildURL(), true
+		}
+	}
+
+	return "", false
+}
+
+func isVideoContentEndpoint(rawURL, taskID string) bool {
+	if strings.TrimSpace(taskID) == "" {
+		return false
+	}
+	parsed, err := url.Parse(strings.TrimSpace(rawURL))
+	if err != nil {
+		return false
+	}
+	expectedSuffix := "/v1/videos/" + url.PathEscape(taskID) + "/content"
+	return strings.HasSuffix(strings.TrimRight(parsed.EscapedPath(), "/"), expectedSuffix)
 }
 
 func VideoProxy(c *gin.Context) {
@@ -68,18 +110,8 @@ func VideoProxy(c *gin.Context) {
 	}
 
 	var videoURL string
+	channelBackedTarget := false
 	proxy := channel.GetSetting().Proxy
-	client := service.GetSSRFProtectedHTTPClient()
-	if proxy != "" {
-		// 渠道代理路径的连接由代理侧建立，无法做拨号时逐 IP 校验，
-		// 因此后面对 videoURL 保留请求前的一次性 SSRF 校验。
-		client, err = service.GetHttpClientWithProxy(proxy)
-		if err != nil {
-			logger.LogError(c.Request.Context(), fmt.Sprintf("Failed to create proxy client for task %s: %s", taskID, err.Error()))
-			videoProxyError(c, http.StatusInternalServerError, "server_error", "Failed to create proxy client")
-			return
-		}
-	}
 
 	ctx, cancel := context.WithTimeout(c.Request.Context(), 60*time.Second)
 	defer cancel()
@@ -90,45 +122,37 @@ func VideoProxy(c *gin.Context) {
 		return
 	}
 
-	switch channel.Type {
-	case constant.ChannelTypeGemini:
-		apiKey := task.PrivateData.Key
-		if apiKey == "" {
-			logger.LogError(c.Request.Context(), fmt.Sprintf("Missing stored API key for Gemini task %s", taskID))
-			videoProxyError(c, http.StatusInternalServerError, "server_error", "API key not stored for task")
-			return
-		}
-		videoURL, err = getGeminiVideoURL(channel, task, apiKey)
-		if err != nil {
-			logger.LogError(c.Request.Context(), fmt.Sprintf("Failed to resolve Gemini video URL for task %s: %s", taskID, err.Error()))
-			videoProxyError(c, http.StatusBadGateway, "server_error", "Failed to resolve Gemini video URL")
-			return
-		}
-		req.Header.Set("x-goog-api-key", apiKey)
-	case constant.ChannelTypeVertexAi:
-		videoURL, err = getVertexVideoURL(channel, task)
-		if err != nil {
-			logger.LogError(c.Request.Context(), fmt.Sprintf("Failed to resolve Vertex video URL for task %s: %s", taskID, err.Error()))
-			videoProxyError(c, http.StatusBadGateway, "server_error", "Failed to resolve Vertex video URL")
-			return
-		}
-	case constant.ChannelTypeOpenAI, constant.ChannelTypeSora:
-		videoURL = fmt.Sprintf("%s/v1/videos/%s/content", baseURL, task.GetUpstreamTaskID())
+	if channelURL, ok := channelBackedVideoContentURL(channel.Type, baseURL, task); ok {
+		videoURL = channelURL
+		channelBackedTarget = true
 		req.Header.Set("Authorization", "Bearer "+channel.Key)
-	case constant.ChannelTypeNewAPIVideo:
-		// New API Video 上游若在任务结果中直接给出成片地址（非我们自己构造的代理地址），
-		// 直接使用该地址（走下面的 SSRF 校验）；否则退回到向上游内容端点发起带鉴权的请求，
-		// 与 OpenAI/Sora 分支保持一致。
-		storedURL := strings.TrimSpace(task.GetResultURL())
-		if storedURL != "" && storedURL != taskcommon.BuildProxyURL(task.TaskID) {
-			videoURL = storedURL
-		} else {
-			videoURL = fmt.Sprintf("%s/v1/videos/%s/content", baseURL, task.GetUpstreamTaskID())
-			req.Header.Set("Authorization", "Bearer "+channel.Key)
+	} else {
+		switch channel.Type {
+		case constant.ChannelTypeGemini:
+			apiKey := task.PrivateData.Key
+			if apiKey == "" {
+				logger.LogError(c.Request.Context(), fmt.Sprintf("Missing stored API key for Gemini task %s", taskID))
+				videoProxyError(c, http.StatusInternalServerError, "server_error", "API key not stored for task")
+				return
+			}
+			videoURL, err = getGeminiVideoURL(channel, task, apiKey)
+			if err != nil {
+				logger.LogError(c.Request.Context(), fmt.Sprintf("Failed to resolve Gemini video URL for task %s: %s", taskID, err.Error()))
+				videoProxyError(c, http.StatusBadGateway, "server_error", "Failed to resolve Gemini video URL")
+				return
+			}
+			req.Header.Set("x-goog-api-key", apiKey)
+		case constant.ChannelTypeVertexAi:
+			videoURL, err = getVertexVideoURL(channel, task)
+			if err != nil {
+				logger.LogError(c.Request.Context(), fmt.Sprintf("Failed to resolve Vertex video URL for task %s: %s", taskID, err.Error()))
+				videoProxyError(c, http.StatusBadGateway, "server_error", "Failed to resolve Vertex video URL")
+				return
+			}
+		default:
+			// Video URL is stored in PrivateData.ResultURL (fallback to FailReason for old data)
+			videoURL = task.GetResultURL()
 		}
-	default:
-		// Video URL is stored in PrivateData.ResultURL (fallback to FailReason for old data)
-		videoURL = task.GetResultURL()
 	}
 
 	videoURL = strings.TrimSpace(videoURL)
@@ -146,17 +170,36 @@ func VideoProxy(c *gin.Context) {
 		return
 	}
 
-	var validateErr error
-	if proxy == "" {
-		validateErr = service.ValidateSSRFProtectedFetchURL(videoURL)
-	} else {
-		fetchSetting := system_setting.GetFetchSetting()
-		validateErr = common.ValidateURLWithFetchSetting(videoURL, fetchSetting.EnableSSRFProtection, fetchSetting.AllowPrivateIp, fetchSetting.DomainFilterMode, fetchSetting.IpFilterMode, fetchSetting.DomainList, fetchSetting.IpList, fetchSetting.AllowedPorts, fetchSetting.ApplyIPFilterForDomain)
+	if !channelBackedTarget {
+		var validateErr error
+		if proxy == "" {
+			validateErr = service.ValidateSSRFProtectedFetchURL(videoURL)
+		} else {
+			fetchSetting := system_setting.GetFetchSetting()
+			validateErr = common.ValidateURLWithFetchSetting(videoURL, fetchSetting.EnableSSRFProtection, fetchSetting.AllowPrivateIp, fetchSetting.DomainFilterMode, fetchSetting.IpFilterMode, fetchSetting.DomainList, fetchSetting.IpList, fetchSetting.AllowedPorts, fetchSetting.ApplyIPFilterForDomain)
+		}
+		if validateErr != nil {
+			logger.LogError(c.Request.Context(), fmt.Sprintf("Video URL blocked for task %s: %v", taskID, validateErr))
+			videoProxyError(c, http.StatusForbidden, "server_error", fmt.Sprintf("request blocked: %v", validateErr))
+			return
+		}
 	}
-	if validateErr != nil {
-		logger.LogError(c.Request.Context(), fmt.Sprintf("Video URL blocked for task %s: %v", taskID, validateErr))
-		videoProxyError(c, http.StatusForbidden, "server_error", fmt.Sprintf("request blocked: %v", validateErr))
-		return
+
+	client := service.GetSSRFProtectedHTTPClient()
+	if channelBackedTarget {
+		// Channel base URLs are operator-managed relay targets and may legitimately
+		// use private networks or non-standard ports.
+		client = service.GetHttpClient()
+	}
+	if proxy != "" {
+		// For arbitrary result URLs, the validation above remains mandatory because
+		// the proxy establishes the connection and bypasses dial-time IP checks.
+		client, err = service.GetHttpClientWithProxy(proxy)
+		if err != nil {
+			logger.LogError(c.Request.Context(), fmt.Sprintf("Failed to create proxy client for task %s: %s", taskID, err.Error()))
+			videoProxyError(c, http.StatusInternalServerError, "server_error", "Failed to create proxy client")
+			return
+		}
 	}
 
 	req.URL, err = url.Parse(videoURL)
