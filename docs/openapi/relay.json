@@ -31,6 +31,9 @@
       "name": "视频生成/Sora兼容格式"
     },
     {
+      "name": "视频生成/xAI官方格式"
+    },
+    {
       "name": "视频生成/Kling格式"
     },
     {
@@ -686,14 +689,151 @@
         ]
       }
     },
+    "/v1/videos/generations": {
+      "post": {
+        "summary": "创建 xAI 视频生成任务",
+        "deprecated": false,
+        "description": "按 xAI 官方协议创建异步视频生成任务并返回 request_id。",
+        "operationId": "createXAIVideo",
+        "tags": [
+          "视频生成/xAI官方格式"
+        ],
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "model": {
+                    "type": "string",
+                    "description": "xAI 视频模型名称",
+                    "example": "grok-imagine-video"
+                  },
+                  "prompt": {
+                    "type": "string",
+                    "description": "视频描述；图生视频时可省略"
+                  },
+                  "duration": {
+                    "oneOf": [
+                      {
+                        "type": "integer"
+                      },
+                      {
+                        "type": "string"
+                      }
+                    ],
+                    "description": "视频时长（秒）；xAI 官方默认值为 8"
+                  },
+                  "aspect_ratio": {
+                    "type": "string",
+                    "description": "输出宽高比",
+                    "example": "16:9"
+                  },
+                  "resolution": {
+                    "type": "string",
+                    "enum": [
+                      "480p",
+                      "720p",
+                      "1080p"
+                    ],
+                    "description": "输出分辨率"
+                  },
+                  "image": {
+                    "type": "object",
+                    "description": "图生视频的首帧图片",
+                    "properties": {
+                      "url": {
+                        "type": "string"
+                      },
+                      "file_id": {
+                        "type": "string"
+                      }
+                    }
+                  },
+                  "reference_images": {
+                    "type": "array",
+                    "description": "参考图数组；不能与 image 同时使用",
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "url": {
+                          "type": "string"
+                        },
+                        "file_id": {
+                          "type": "string"
+                        }
+                      }
+                    }
+                  }
+                },
+                "required": [
+                  "model"
+                ]
+              },
+              "example": {
+                "model": "grok-imagine-video",
+                "prompt": "A cat lounging in a sunbeam",
+                "duration": 8,
+                "aspect_ratio": "16:9",
+                "resolution": "720p"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "成功创建视频任务",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "request_id": {
+                      "type": "string",
+                      "description": "用于查询任务状态的公开请求 ID"
+                    }
+                  },
+                  "required": [
+                    "request_id"
+                  ]
+                },
+                "example": {
+                  "request_id": "task_example"
+                }
+              }
+            },
+            "headers": {}
+          },
+          "400": {
+            "description": "请求参数错误",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "headers": {}
+          }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ]
+      }
+    },
     "/v1/videos/{task_id}": {
       "get": {
         "summary": "获取视频任务状态 ",
         "deprecated": false,
-        "description": "OpenAI 兼容的视频任务状态查询接口。\n\n返回视频任务的详细状态信息。\n",
+        "description": "获取 OpenAI Sora 兼容或 xAI 官方协议视频任务的状态。响应格式与创建任务时使用的协议一致。\n",
         "operationId": "getVideo",
         "tags": [
-          "视频生成/Sora兼容格式"
+          "视频生成/Sora兼容格式",
+          "视频生成/xAI官方格式"
         ],
         "parameters": [
           {
@@ -735,16 +875,25 @@
                     },
                     "seconds": {
                       "type": "string"
+                    },
+                    "video": {
+                      "type": "object",
+                      "description": "xAI 任务完成时返回的视频信息",
+                      "properties": {
+                        "url": {
+                          "type": "string"
+                        },
+                        "duration": {
+                          "type": "number"
+                        },
+                        "respect_moderation": {
+                          "type": "boolean"
+                        }
+                      }
                     }
                   },
                   "required": [
-                    "id",
-                    "object",
-                    "model",
-                    "status",
-                    "progress",
-                    "created_at",
-                    "seconds"
+                    "status"
                   ]
                 },
                 "example": {
