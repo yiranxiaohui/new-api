@@ -2,6 +2,7 @@ package xai
 
 import (
 	"bytes"
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -9,6 +10,7 @@ import (
 	"net/url"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/constant"
@@ -28,6 +30,8 @@ import (
 const (
 	requestContextKey      = "xai_video_request"
 	defaultDurationSeconds = 8
+	clientProtocolXAI      = "xai"
+	clientProtocolOpenAI   = "openai"
 )
 
 var modelList = []string{
@@ -79,6 +83,59 @@ func (a *TaskAdaptor) Init(info *relaycommon.RelayInfo) {
 }
 
 func (a *TaskAdaptor) ValidateRequestAndSetAction(c *gin.Context, info *relaycommon.RelayInfo) *taskdto.TaskError {
+	if info.TaskRelayInfo == nil {
+		info.TaskRelayInfo = &relaycommon.TaskRelayInfo{}
+	}
+	if c.Request.URL.Path == "/v1/videos" {
+		info.ClientProtocol = clientProtocolOpenAI
+		if taskErr := relaycommon.ValidateMultipartDirect(c, info); taskErr != nil {
+			return taskErr
+		}
+
+		openAIReq, err := relaycommon.GetTaskRequest(c)
+		if err != nil {
+			return service.TaskErrorWrapperLocal(err, "invalid_request", http.StatusBadRequest)
+		}
+		if strings.Contains(strings.ToLower(c.GetHeader("Content-Type")), "multipart/form-data") {
+			form, err := common.ParseMultipartFormReusable(c)
+			if err != nil {
+				return service.TaskErrorWrapperLocal(err, "invalid_multipart_form", http.StatusBadRequest)
+			}
+			defer form.RemoveAll()
+
+			files := form.File["input_reference"]
+			if len(files)+len(openAIReq.Images) > 1 {
+				return service.TaskErrorWrapperLocal(errors.New("xAI image-to-video accepts one input_reference"), "invalid_request", http.StatusBadRequest)
+			}
+			if len(files) == 1 {
+				file, err := files[0].Open()
+				if err != nil {
+					return service.TaskErrorWrapperLocal(err, "invalid_input_reference", http.StatusBadRequest)
+				}
+				imageBytes, readErr := io.ReadAll(file)
+				_ = file.Close()
+				if readErr != nil {
+					return service.TaskErrorWrapperLocal(readErr, "invalid_input_reference", http.StatusBadRequest)
+				}
+				mimeType := strings.TrimSpace(files[0].Header.Get("Content-Type"))
+				if mimeType == "" || mimeType == "application/octet-stream" {
+					mimeType = http.DetectContentType(imageBytes)
+				}
+				if !strings.HasPrefix(strings.ToLower(mimeType), "image/") {
+					return service.TaskErrorWrapperLocal(errors.New("input_reference must be an image"), "invalid_input_reference", http.StatusBadRequest)
+				}
+				openAIReq.Images = append(openAIReq.Images, "data:"+mimeType+";base64,"+base64.StdEncoding.EncodeToString(imageBytes))
+			}
+		}
+
+		req, err := convertOpenAIRequest(openAIReq)
+		if err != nil {
+			return service.TaskErrorWrapperLocal(err, "invalid_request", http.StatusBadRequest)
+		}
+		return validateGenerationRequest(c, info, req)
+	}
+
+	info.ClientProtocol = clientProtocolXAI
 	if !strings.HasPrefix(strings.ToLower(c.GetHeader("Content-Type")), "application/json") {
 		return service.TaskErrorWrapperLocal(errors.New("xAI video generation requires application/json"), "invalid_request", http.StatusBadRequest)
 	}
@@ -87,6 +144,10 @@ func (a *TaskAdaptor) ValidateRequestAndSetAction(c *gin.Context, info *relaycom
 	if err := common.UnmarshalBodyReusable(c, &req); err != nil {
 		return service.TaskErrorWrapperLocal(err, "invalid_request", http.StatusBadRequest)
 	}
+	return validateGenerationRequest(c, info, req)
+}
+
+func validateGenerationRequest(c *gin.Context, info *relaycommon.RelayInfo, req generationRequest) *taskdto.TaskError {
 	if strings.TrimSpace(req.Model) == "" {
 		return service.TaskErrorWrapperLocal(errors.New("model field is required"), "missing_model", http.StatusBadRequest)
 	}
@@ -127,6 +188,70 @@ func (a *TaskAdaptor) ValidateRequestAndSetAction(c *gin.Context, info *relaycom
 	}
 	c.Set(requestContextKey, req)
 	return nil
+}
+
+func convertOpenAIRequest(req relaycommon.TaskSubmitReq) (generationRequest, error) {
+	prompt := strings.TrimSpace(req.Prompt)
+	converted := generationRequest{
+		Model:  req.Model,
+		Prompt: &prompt,
+	}
+
+	duration := req.Duration
+	if duration == 0 && req.Seconds != "" {
+		parsed, err := strconv.Atoi(req.Seconds)
+		if err != nil {
+			return generationRequest{}, errors.Wrap(err, "seconds must be an integer")
+		}
+		duration = parsed
+	}
+	if duration > 0 {
+		value := dto.IntValue(duration)
+		converted.Duration = &value
+	}
+
+	if req.Size != "" {
+		switch strings.ToLower(strings.TrimSpace(req.Size)) {
+		case "854x480", "864x480":
+			aspectRatio, resolution := "16:9", "480p"
+			converted.AspectRatio, converted.Resolution = &aspectRatio, &resolution
+		case "480x854", "480x864":
+			aspectRatio, resolution := "9:16", "480p"
+			converted.AspectRatio, converted.Resolution = &aspectRatio, &resolution
+		case "1280x720":
+			aspectRatio, resolution := "16:9", "720p"
+			converted.AspectRatio, converted.Resolution = &aspectRatio, &resolution
+		case "720x1280":
+			aspectRatio, resolution := "9:16", "720p"
+			converted.AspectRatio, converted.Resolution = &aspectRatio, &resolution
+		case "1792x1024", "1920x1080":
+			aspectRatio, resolution := "16:9", "1080p"
+			converted.AspectRatio, converted.Resolution = &aspectRatio, &resolution
+		case "1024x1792", "1080x1920":
+			aspectRatio, resolution := "9:16", "1080p"
+			converted.AspectRatio, converted.Resolution = &aspectRatio, &resolution
+		default:
+			return generationRequest{}, fmt.Errorf("unsupported OpenAI video size for xAI: %s", req.Size)
+		}
+	}
+
+	if len(req.Images) > 1 {
+		return generationRequest{}, errors.New("xAI image-to-video accepts one input_reference")
+	}
+	if len(req.Images) == 1 {
+		image := strings.TrimSpace(req.Images[0])
+		if image == "" {
+			return generationRequest{}, errors.New("input_reference is empty")
+		}
+		converted.Image = &mediaInput{}
+		if strings.HasPrefix(image, "file_") {
+			converted.Image.FileID = &image
+		} else {
+			converted.Image.URL = &image
+		}
+	}
+
+	return converted, nil
 }
 
 func (a *TaskAdaptor) EstimateBilling(c *gin.Context, info *relaycommon.RelayInfo) map[string]float64 {
@@ -189,6 +314,23 @@ func (a *TaskAdaptor) BuildRequestHeader(_ *gin.Context, req *http.Request, _ *r
 }
 
 func (a *TaskAdaptor) BuildRequestBody(c *gin.Context, info *relaycommon.RelayInfo) (io.Reader, error) {
+	if info.TaskRelayInfo != nil && info.ClientProtocol == clientProtocolOpenAI {
+		value, exists := c.Get(requestContextKey)
+		if !exists {
+			return nil, errors.New("xAI request not found in context")
+		}
+		req, ok := value.(generationRequest)
+		if !ok {
+			return nil, errors.New("invalid xAI request in context")
+		}
+		req.Model = info.UpstreamModelName
+		body, err := common.Marshal(req)
+		if err != nil {
+			return nil, errors.Wrap(err, "marshal xAI request")
+		}
+		return bytes.NewReader(body), nil
+	}
+
 	storage, err := common.GetBodyStorage(c)
 	if err != nil {
 		return nil, errors.Wrap(err, "get request body failed")
@@ -226,7 +368,23 @@ func (a *TaskAdaptor) DoResponse(c *gin.Context, resp *http.Response, info *rela
 		return
 	}
 
-	c.JSON(http.StatusOK, generationResponse{RequestID: info.PublicTaskID})
+	if info.TaskRelayInfo != nil && info.ClientProtocol == clientProtocolOpenAI {
+		openAIVideo := dto.NewOpenAIVideo()
+		openAIVideo.ID = info.PublicTaskID
+		openAIVideo.TaskID = info.PublicTaskID
+		openAIVideo.Model = info.OriginModelName
+		openAIVideo.CreatedAt = time.Now().Unix()
+		if value, exists := c.Get(requestContextKey); exists {
+			if req, ok := value.(generationRequest); ok {
+				if req.Duration != nil {
+					openAIVideo.Seconds = strconv.Itoa(int(*req.Duration))
+				}
+			}
+		}
+		c.JSON(http.StatusOK, openAIVideo)
+	} else {
+		c.JSON(http.StatusOK, generationResponse{RequestID: info.PublicTaskID})
+	}
 	return upstream.RequestID, responseBody, nil
 }
 
@@ -296,6 +454,20 @@ func resultFailureReason(raw json.RawMessage, status string) string {
 }
 
 func (a *TaskAdaptor) ConvertToOpenAIVideo(task *model.Task) ([]byte, error) {
+	if task.PrivateData.ClientProtocol == clientProtocolOpenAI {
+		openAIVideo := task.ToOpenAIVideo()
+		if task.Status == model.TaskStatusNotStart {
+			openAIVideo.Status = dto.VideoStatusQueued
+		}
+		if task.Status == model.TaskStatusFailure {
+			openAIVideo.Error = &dto.OpenAIVideoError{
+				Code:    "video_generation_failed",
+				Message: task.FailReason,
+			}
+		}
+		return common.Marshal(openAIVideo)
+	}
+
 	payload := make(map[string]any)
 	if len(task.Data) > 0 {
 		_ = common.Unmarshal(task.Data, &payload)

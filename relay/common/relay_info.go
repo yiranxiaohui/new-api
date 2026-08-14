@@ -822,6 +822,10 @@ func (info *RelayInfo) HasSendResponse() bool {
 type TaskRelayInfo struct {
 	Action       string
 	OriginTaskID string
+	// ClientProtocol records the task API shape used by the caller so polling
+	// can return the matching protocol when multiple submit routes share the
+	// same /v1/videos/:task_id endpoint.
+	ClientProtocol string
 	// PublicTaskID 是提交时预生成的 task_xxxx 格式公开 ID，
 	// 供 DoResponse 在返回给客户端时使用（避免暴露上游真实 ID）。
 	PublicTaskID string

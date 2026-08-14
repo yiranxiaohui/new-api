@@ -1,9 +1,12 @@
 package xai
 
 import (
+	"bytes"
 	"io"
+	"mime/multipart"
 	"net/http"
 	"net/http/httptest"
+	"net/textproto"
 	"strings"
 	"testing"
 
@@ -11,6 +14,7 @@ import (
 	"github.com/QuantumNous/new-api/constant"
 	"github.com/QuantumNous/new-api/model"
 	relaycommon "github.com/QuantumNous/new-api/relay/common"
+	"github.com/QuantumNous/new-api/relaykit/dto"
 	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -99,6 +103,7 @@ func TestValidateRequestModesAndDurationBounds(t *testing.T) {
 			}
 			require.Nil(t, taskErr)
 			assert.Equal(t, test.wantAction, info.Action)
+			assert.Equal(t, clientProtocolXAI, info.ClientProtocol)
 		})
 	}
 }
@@ -129,6 +134,89 @@ func TestBuildRequestUsesOfficialEndpointAndPreservesPayload(t *testing.T) {
 	require.NoError(t, adaptor.BuildRequestHeader(context, request, info))
 	assert.Equal(t, "Bearer secret-key", request.Header.Get("Authorization"))
 	assert.Equal(t, "application/json", request.Header.Get("Content-Type"))
+}
+
+func TestNovaChatMultipartRequestConvertsToXAI(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	var body bytes.Buffer
+	writer := multipart.NewWriter(&body)
+	require.NoError(t, writer.WriteField("model", "grok-imagine-video"))
+	require.NoError(t, writer.WriteField("prompt", "a cat playing piano"))
+	require.NoError(t, writer.WriteField("seconds", "8"))
+	require.NoError(t, writer.WriteField("size", "1280x720"))
+	require.NoError(t, writer.Close())
+
+	recorder := httptest.NewRecorder()
+	context, _ := gin.CreateTestContext(recorder)
+	context.Request = httptest.NewRequest(http.MethodPost, "/v1/videos", &body)
+	context.Request.Header.Set("Content-Type", writer.FormDataContentType())
+	defer common.CleanupBodyStorage(context)
+
+	info := &relaycommon.RelayInfo{
+		ChannelMeta: &relaycommon.ChannelMeta{
+			UpstreamModelName: "grok-imagine-video-1.5",
+		},
+		TaskRelayInfo: &relaycommon.TaskRelayInfo{},
+	}
+	adaptor := newTestAdaptor()
+	require.Nil(t, adaptor.ValidateRequestAndSetAction(context, info))
+	assert.Equal(t, clientProtocolOpenAI, info.ClientProtocol)
+	assert.Equal(t, constant.TaskActionTextGenerate, info.Action)
+	assert.Equal(t, map[string]float64{"seconds": 8, "resolution": 1.75}, adaptor.EstimateBilling(context, info))
+
+	requestBody, err := adaptor.BuildRequestBody(context, info)
+	require.NoError(t, err)
+	raw, err := io.ReadAll(requestBody)
+	require.NoError(t, err)
+	assert.JSONEq(t, `{
+		"model":"grok-imagine-video-1.5",
+		"prompt":"a cat playing piano",
+		"duration":8,
+		"aspect_ratio":"16:9",
+		"resolution":"720p"
+	}`, string(raw))
+}
+
+func TestNovaChatMultipartImageBecomesDataURL(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	var body bytes.Buffer
+	writer := multipart.NewWriter(&body)
+	require.NoError(t, writer.WriteField("model", "grok-imagine-video"))
+	require.NoError(t, writer.WriteField("prompt", "animate the first frame"))
+	require.NoError(t, writer.WriteField("seconds", "4"))
+	require.NoError(t, writer.WriteField("size", "1280x720"))
+	header := make(textproto.MIMEHeader)
+	header.Set("Content-Disposition", `form-data; name="input_reference"; filename="frame.png"`)
+	header.Set("Content-Type", "image/png")
+	part, err := writer.CreatePart(header)
+	require.NoError(t, err)
+	_, err = part.Write([]byte("png-bytes"))
+	require.NoError(t, err)
+	require.NoError(t, writer.Close())
+
+	recorder := httptest.NewRecorder()
+	context, _ := gin.CreateTestContext(recorder)
+	context.Request = httptest.NewRequest(http.MethodPost, "/v1/videos", &body)
+	context.Request.Header.Set("Content-Type", writer.FormDataContentType())
+	defer common.CleanupBodyStorage(context)
+
+	info := &relaycommon.RelayInfo{
+		ChannelMeta:   &relaycommon.ChannelMeta{UpstreamModelName: "grok-imagine-video"},
+		TaskRelayInfo: &relaycommon.TaskRelayInfo{},
+	}
+	adaptor := newTestAdaptor()
+	require.Nil(t, adaptor.ValidateRequestAndSetAction(context, info))
+	assert.Equal(t, constant.TaskActionGenerate, info.Action)
+
+	requestBody, err := adaptor.BuildRequestBody(context, info)
+	require.NoError(t, err)
+	raw, err := io.ReadAll(requestBody)
+	require.NoError(t, err)
+	var payload generationRequest
+	require.NoError(t, common.Unmarshal(raw, &payload))
+	require.NotNil(t, payload.Image)
+	require.NotNil(t, payload.Image.URL)
+	assert.Equal(t, "data:image/png;base64,cG5nLWJ5dGVz", *payload.Image.URL)
 }
 
 func TestEstimateBillingUsesDurationAndResolution(t *testing.T) {
@@ -177,6 +265,33 @@ func TestDoResponseReturnsPublicRequestID(t *testing.T) {
 	assert.Equal(t, "upstream-secret-id", upstreamID)
 	assert.JSONEq(t, `{"request_id":"upstream-secret-id"}`, string(taskData))
 	assert.JSONEq(t, `{"request_id":"task_public"}`, recorder.Body.String())
+}
+
+func TestDoResponseReturnsOpenAIVideoForNovaChat(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	recorder := httptest.NewRecorder()
+	context, _ := gin.CreateTestContext(recorder)
+	duration := dto.IntValue(8)
+	context.Set(requestContextKey, generationRequest{Duration: &duration})
+	response := &http.Response{Body: io.NopCloser(strings.NewReader(`{"request_id":"upstream-secret-id"}`))}
+
+	upstreamID, _, taskErr := newTestAdaptor().DoResponse(context, response, &relaycommon.RelayInfo{
+		OriginModelName: "grok-imagine-video",
+		TaskRelayInfo: &relaycommon.TaskRelayInfo{
+			ClientProtocol: clientProtocolOpenAI,
+			PublicTaskID:   "task_public",
+		},
+	})
+
+	require.Nil(t, taskErr)
+	assert.Equal(t, "upstream-secret-id", upstreamID)
+	var result map[string]any
+	require.NoError(t, common.Unmarshal(recorder.Body.Bytes(), &result))
+	assert.Equal(t, "task_public", result["id"])
+	assert.Equal(t, "task_public", result["task_id"])
+	assert.Equal(t, "queued", result["status"])
+	assert.Equal(t, "grok-imagine-video", result["model"])
+	assert.Equal(t, "8", result["seconds"])
 }
 
 func TestParseTaskResult(t *testing.T) {
@@ -233,4 +348,35 @@ func TestConvertToXAIResultHidesUpstreamRequestID(t *testing.T) {
 	require.True(t, ok)
 	assert.Equal(t, "https://cdn.example.com/video.mp4", video["url"])
 	assert.NotNil(t, result["usage"])
+}
+
+func TestConvertToOpenAIVideoForNovaChat(t *testing.T) {
+	task := model.InitTask(constant.TaskPlatform("48"), &relaycommon.RelayInfo{
+		ChannelMeta:   &relaycommon.ChannelMeta{},
+		TaskRelayInfo: &relaycommon.TaskRelayInfo{ClientProtocol: clientProtocolOpenAI},
+	})
+	task.TaskID = "task_public"
+	task.Status = model.TaskStatusSuccess
+	task.Progress = "100%"
+	task.Properties.OriginModelName = "grok-imagine-video"
+	task.PrivateData.ResultURL = "https://cdn.example.com/video.mp4"
+
+	body, err := newTestAdaptor().ConvertToOpenAIVideo(task)
+	require.NoError(t, err)
+	var result map[string]any
+	require.NoError(t, common.Unmarshal(body, &result))
+	assert.Equal(t, clientProtocolOpenAI, task.PrivateData.ClientProtocol)
+	assert.Equal(t, "task_public", result["id"])
+	assert.Equal(t, "completed", result["status"])
+	assert.Equal(t, float64(100), result["progress"])
+	metadata, ok := result["metadata"].(map[string]any)
+	require.True(t, ok)
+	assert.Equal(t, "https://cdn.example.com/video.mp4", metadata["url"])
+
+	task.Status = model.TaskStatusNotStart
+	task.Progress = "0%"
+	body, err = newTestAdaptor().ConvertToOpenAIVideo(task)
+	require.NoError(t, err)
+	require.NoError(t, common.Unmarshal(body, &result))
+	assert.Equal(t, "queued", result["status"])
 }
