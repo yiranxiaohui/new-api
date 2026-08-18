@@ -4,10 +4,9 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	"github.com/QuantumNous/new-api/relaykit/dto"
 	relaycommon "github.com/QuantumNous/new-api/relay/common"
 	relayconstant "github.com/QuantumNous/new-api/relay/constant"
-	"github.com/QuantumNous/new-api/setting/ratio_setting"
+	"github.com/QuantumNous/new-api/relaykit/dto"
 	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/require"
 	"github.com/tidwall/gjson"
@@ -35,25 +34,24 @@ func TestModelMappedHelperPreservesOriginModelName(t *testing.T) {
 	require.Equal(t, "real-model", req.Model)
 }
 
-func TestModelMappedHelperPreservesOriginModelNameForResponsesCompact(t *testing.T) {
+func TestModelMappedHelperUsesStandardModelNameForResponsesCompact(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	ctx, _ := gin.CreateTestContext(httptest.NewRecorder())
 	ctx.Set("model_mapping", `{"alias-model":"real-model"}`)
 
-	originModelName := ratio_setting.WithCompactModelSuffix("alias-model")
 	info := &relaycommon.RelayInfo{
-		OriginModelName: originModelName,
+		OriginModelName: "alias-model",
 		RelayMode:       relayconstant.RelayModeResponsesCompact,
 		ChannelMeta: &relaycommon.ChannelMeta{
-			UpstreamModelName: originModelName,
+			UpstreamModelName: "alias-model",
 		},
 	}
-	req := &dto.OpenAIResponsesCompactionRequest{Model: originModelName}
+	req := &dto.OpenAIResponsesCompactionRequest{Model: "alias-model"}
 
 	err := ModelMappedHelper(ctx, info, req)
 	require.NoError(t, err)
 	require.True(t, info.IsModelMapped)
-	require.Equal(t, originModelName, info.OriginModelName)
+	require.Equal(t, "alias-model", info.OriginModelName)
 	require.Equal(t, "real-model", info.UpstreamModelName)
 	require.Equal(t, "real-model", req.Model)
 }
