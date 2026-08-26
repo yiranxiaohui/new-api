@@ -19,18 +19,18 @@ For commercial licensing, please contact support@quantumnous.com
 export const LEGAL_DOCUMENTS = [
   {
     label: 'Terms of Service',
-    href: 'https://www.xtokenmirror.com/legal/terms',
+    href: '/legal/terms',
   },
   {
     label: 'Usage Policy',
-    href: 'https://www.xtokenmirror.com/legal/usage-policy',
+    href: '/legal/usage-policy',
   },
   {
     label: 'Supported Regions',
-    href: 'https://www.xtokenmirror.com/legal/supported-regions',
+    href: '/legal/supported-regions',
   },
   {
     label: 'Service-Specific Terms',
-    href: 'https://www.xtokenmirror.com/legal/service-specific-terms',
+    href: '/legal/service-specific-terms',
   },
 ] as const

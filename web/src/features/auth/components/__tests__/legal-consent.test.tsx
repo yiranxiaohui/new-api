@@ -30,16 +30,17 @@ describe('LegalConsent', () => {
     expect(screen.getByRole('checkbox')).toBeInTheDocument()
     expect(
       screen.getByRole('link', { name: 'Terms of Service' })
-    ).toHaveAttribute('href', 'https://www.xtokenmirror.com/legal/terms')
-    expect(
-      screen.getByRole('link', { name: 'Usage Policy' })
-    ).toBeInTheDocument()
+    ).toHaveAttribute('href', '/legal/terms')
+    expect(screen.getByRole('link', { name: 'Usage Policy' })).toHaveAttribute(
+      'href',
+      '/legal/usage-policy'
+    )
     expect(
       screen.getByRole('link', { name: 'Supported Regions' })
-    ).toBeInTheDocument()
+    ).toHaveAttribute('href', '/legal/supported-regions')
     expect(
       screen.getByRole('link', { name: 'Service-Specific Terms' })
-    ).toBeInTheDocument()
+    ).toHaveAttribute('href', '/legal/service-specific-terms')
     expect(screen.queryByRole('link', { name: 'User Agreement' })).toBeNull()
     expect(screen.queryByRole('link', { name: 'Privacy Policy' })).toBeNull()
   })
