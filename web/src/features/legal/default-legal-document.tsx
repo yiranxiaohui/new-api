@@ -19,6 +19,7 @@ For commercial licensing, please contact support@quantumnous.com
 import { useTranslation } from 'react-i18next'
 
 import { PublicLayout } from '@/components/layout'
+import { RichContent } from '@/components/rich-content'
 
 export type DefaultLegalDocumentId =
   | 'terms'
@@ -28,47 +29,23 @@ export type DefaultLegalDocumentId =
 
 const DOCUMENTS: Record<
   DefaultLegalDocumentId,
-  { title: string; intro: string; points: string[] }
+  { title: string; content: string }
 > = {
   terms: {
     title: 'Terms of Service',
-    intro:
-      'These Terms of Service govern your access to and use of this site and its API services.',
-    points: [
-      'Use the service only for lawful purposes and in accordance with these terms.',
-      'You are responsible for the accounts, credentials, content, and API requests made through your account.',
-      'We may suspend access when necessary to protect the service, users, or legal rights.',
-    ],
+    content: 'Default Terms of Service document',
   },
   'usage-policy': {
     title: 'Usage Policy',
-    intro:
-      'This Usage Policy describes prohibited and restricted uses of this site and its API services.',
-    points: [
-      'Do not use the service to violate applicable law, infringe rights, or evade access controls.',
-      'Do not interfere with the service, bypass usage limits, or attempt to access another user account.',
-      'You are responsible for reviewing the rules that apply to each model, provider, and integration you use.',
-    ],
+    content: 'Default Usage Policy document',
   },
   'supported-regions': {
     title: 'Supported Regions',
-    intro:
-      'Availability depends on applicable laws, sanctions, payment availability, and provider restrictions.',
-    points: [
-      'Do not access the service from a region where its use or the requested provider is prohibited.',
-      'You are responsible for confirming that your use, payments, and connected services are permitted in your region.',
-      'Availability may change when legal, security, or provider requirements change.',
-    ],
+    content: 'Default Supported Regions document',
   },
   'service-specific-terms': {
     title: 'Service-Specific Terms',
-    intro:
-      'Some models, tools, and integrations may have additional provider requirements beyond these general terms.',
-    points: [
-      'Provider-specific limits, availability, and content rules apply when you use an integrated service.',
-      'You must have the rights and authorizations required for any account, key, or content you connect.',
-      'When provider terms conflict with these terms, the stricter requirement applies to that provider service.',
-    ],
+    content: 'Default Service-Specific Terms document',
   },
 }
 
@@ -79,42 +56,27 @@ export function DefaultLegalDocument({
 }) {
   const { t } = useTranslation()
   const document = DOCUMENTS[documentId]
+  const content = t(document.content).replace(/^# [^\n]+\n\n/u, '')
 
   return (
     <PublicLayout>
-      <article className='mx-auto max-w-3xl space-y-8 py-8'>
-        <header className='space-y-3'>
+      <article className='mx-auto max-w-4xl space-y-8 py-8'>
+        <header className='border-border space-y-3 border-b pb-6'>
           <h1 className='text-3xl font-semibold tracking-tight'>
             {t(document.title)}
           </h1>
-          <p className='text-muted-foreground text-sm leading-6'>
-            {t(document.intro)}
-          </p>
-        </header>
-
-        <section className='space-y-4'>
-          <h2 className='text-xl font-semibold'>{t('Overview')}</h2>
           <p className='text-muted-foreground text-sm leading-6'>
             {t(
               'Please read this document together with the other legal documents linked on the sign-in and registration pages.'
             )}
           </p>
-        </section>
+        </header>
 
-        <section className='space-y-4'>
-          <h2 className='text-xl font-semibold'>{t('Important')}</h2>
-          <ul className='text-muted-foreground list-disc space-y-3 ps-5 text-sm leading-6'>
-            {document.points.map((point) => (
-              <li key={point}>{t(point)}</li>
-            ))}
-          </ul>
-        </section>
-
-        <p className='text-muted-foreground border-border border-t pt-6 text-xs leading-5'>
-          {t(
-            'This page provides general service information and does not replace professional legal advice.'
-          )}
-        </p>
+        <RichContent
+          mode='markdown'
+          content={content}
+          className='prose-neutral dark:prose-invert max-w-none'
+        />
       </article>
     </PublicLayout>
   )

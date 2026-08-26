@@ -572,4 +572,10 @@ export const STATIC_I18N_KEYS = [
   'This user account is disabled.',
   'Telegram binding failed. Please try again.',
   'Verification scope is missing',
+
+  // Default legal documents (content keys passed through a document registry)
+  'Default Terms of Service document',
+  'Default Usage Policy document',
+  'Default Supported Regions document',
+  'Default Service-Specific Terms document',
 ] as const
