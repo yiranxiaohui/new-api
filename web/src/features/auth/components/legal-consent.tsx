@@ -42,10 +42,6 @@ export function LegalConsent({
   const hasUserAgreement = Boolean(status?.user_agreement_enabled)
   const hasPrivacyPolicy = Boolean(status?.privacy_policy_enabled)
 
-  if (!hasUserAgreement && !hasPrivacyPolicy) {
-    return null
-  }
-
   const handleChange = (value: boolean) => {
     onCheckedChange(value === true)
   }

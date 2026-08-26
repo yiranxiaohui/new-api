@@ -43,10 +43,6 @@ export function TermsFooter({
   const hasUserAgreement = Boolean(status?.user_agreement_enabled)
   const hasPrivacyPolicy = Boolean(status?.privacy_policy_enabled)
 
-  if (!hasUserAgreement && !hasPrivacyPolicy) {
-    return null
-  }
-
   const links = [
     ...LEGAL_DOCUMENTS,
     ...(hasUserAgreement
