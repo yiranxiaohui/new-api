@@ -16,6 +16,10 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
-export { UserAgreement } from './user-agreement'
-export { PrivacyPolicy } from './privacy-policy'
-export { DefaultLegalDocument } from './default-legal-document'
+import { createFileRoute } from '@tanstack/react-router'
+
+import { DefaultLegalDocument } from '@/features/legal'
+
+export const Route = createFileRoute('/legal/terms')({
+  component: () => <DefaultLegalDocument documentId='terms' />,
+})
