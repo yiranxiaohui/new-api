@@ -29,6 +29,10 @@ import { Route as errors503RouteImport } from './routes/(errors)/503'
 import { Route as AuthenticatedChat2linkRouteImport } from './routes/_authenticated/chat2link'
 import { Route as AuthenticatedSystemSettingsRouteRouteImport } from './routes/_authenticated/system-settings/route'
 import { Route as AboutIndexRouteImport } from './routes/about/index'
+import { Route as LegalServiceSpecificTermsRouteImport } from './routes/legal/service-specific-terms'
+import { Route as LegalSupportedRegionsRouteImport } from './routes/legal/supported-regions'
+import { Route as LegalTermsRouteImport } from './routes/legal/terms'
+import { Route as LegalUsagePolicyRouteImport } from './routes/legal/usage-policy'
 import { Route as OauthProviderRouteImport } from './routes/oauth/$provider'
 import { Route as PricingIndexRouteImport } from './routes/pricing/index'
 import { Route as RankingsIndexRouteImport } from './routes/rankings/index'
@@ -166,6 +170,27 @@ const AuthenticatedSystemSettingsRouteRoute =
 const AboutIndexRoute = AboutIndexRouteImport.update({
   id: '/about/',
   path: '/about/',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const LegalServiceSpecificTermsRoute =
+  LegalServiceSpecificTermsRouteImport.update({
+    id: '/legal/service-specific-terms',
+    path: '/legal/service-specific-terms',
+    getParentRoute: () => rootRouteImport,
+  } as any)
+const LegalSupportedRegionsRoute = LegalSupportedRegionsRouteImport.update({
+  id: '/legal/supported-regions',
+  path: '/legal/supported-regions',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const LegalTermsRoute = LegalTermsRouteImport.update({
+  id: '/legal/terms',
+  path: '/legal/terms',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const LegalUsagePolicyRoute = LegalUsagePolicyRouteImport.update({
+  id: '/legal/usage-policy',
+  path: '/legal/usage-policy',
   getParentRoute: () => rootRouteImport,
 } as any)
 const OauthProviderRoute = OauthProviderRouteImport.update({
@@ -412,6 +437,10 @@ export interface FileRoutesByFullPath {
   '/500': typeof errors500Route
   '/503': typeof errors503Route
   '/chat2link': typeof AuthenticatedChat2linkRoute
+  '/legal/service-specific-terms': typeof LegalServiceSpecificTermsRoute
+  '/legal/supported-regions': typeof LegalSupportedRegionsRoute
+  '/legal/terms': typeof LegalTermsRoute
+  '/legal/usage-policy': typeof LegalUsagePolicyRoute
   '/oauth/$provider': typeof OauthProviderRoute
   '/about/': typeof AboutIndexRoute
   '/pricing/': typeof PricingIndexRoute
@@ -470,6 +499,10 @@ export interface FileRoutesByTo {
   '/500': typeof errors500Route
   '/503': typeof errors503Route
   '/chat2link': typeof AuthenticatedChat2linkRoute
+  '/legal/service-specific-terms': typeof LegalServiceSpecificTermsRoute
+  '/legal/supported-regions': typeof LegalSupportedRegionsRoute
+  '/legal/terms': typeof LegalTermsRoute
+  '/legal/usage-policy': typeof LegalUsagePolicyRoute
   '/oauth/$provider': typeof OauthProviderRoute
   '/about': typeof AboutIndexRoute
   '/pricing': typeof PricingIndexRoute
@@ -532,6 +565,10 @@ export interface FileRoutesById {
   '/(errors)/500': typeof errors500Route
   '/(errors)/503': typeof errors503Route
   '/_authenticated/chat2link': typeof AuthenticatedChat2linkRoute
+  '/legal/service-specific-terms': typeof LegalServiceSpecificTermsRoute
+  '/legal/supported-regions': typeof LegalSupportedRegionsRoute
+  '/legal/terms': typeof LegalTermsRoute
+  '/legal/usage-policy': typeof LegalUsagePolicyRoute
   '/oauth/$provider': typeof OauthProviderRoute
   '/about/': typeof AboutIndexRoute
   '/pricing/': typeof PricingIndexRoute
@@ -593,6 +630,10 @@ export interface FileRouteTypes {
     | '/500'
     | '/503'
     | '/chat2link'
+    | '/legal/service-specific-terms'
+    | '/legal/supported-regions'
+    | '/legal/terms'
+    | '/legal/usage-policy'
     | '/oauth/$provider'
     | '/about/'
     | '/pricing/'
@@ -651,6 +692,10 @@ export interface FileRouteTypes {
     | '/500'
     | '/503'
     | '/chat2link'
+    | '/legal/service-specific-terms'
+    | '/legal/supported-regions'
+    | '/legal/terms'
+    | '/legal/usage-policy'
     | '/oauth/$provider'
     | '/about'
     | '/pricing'
@@ -712,6 +757,10 @@ export interface FileRouteTypes {
     | '/(errors)/500'
     | '/(errors)/503'
     | '/_authenticated/chat2link'
+    | '/legal/service-specific-terms'
+    | '/legal/supported-regions'
+    | '/legal/terms'
+    | '/legal/usage-policy'
     | '/oauth/$provider'
     | '/about/'
     | '/pricing/'
@@ -765,6 +814,10 @@ export interface RootRouteChildren {
   errors404Route: typeof errors404Route
   errors500Route: typeof errors500Route
   errors503Route: typeof errors503Route
+  LegalServiceSpecificTermsRoute: typeof LegalServiceSpecificTermsRoute
+  LegalSupportedRegionsRoute: typeof LegalSupportedRegionsRoute
+  LegalTermsRoute: typeof LegalTermsRoute
+  LegalUsagePolicyRoute: typeof LegalUsagePolicyRoute
   OauthProviderRoute: typeof OauthProviderRoute
   AboutIndexRoute: typeof AboutIndexRoute
   PricingIndexRoute: typeof PricingIndexRoute
@@ -913,6 +966,34 @@ declare module '@tanstack/react-router' {
       path: '/about'
       fullPath: '/about/'
       preLoaderRoute: typeof AboutIndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/legal/service-specific-terms': {
+      id: '/legal/service-specific-terms'
+      path: '/legal/service-specific-terms'
+      fullPath: '/legal/service-specific-terms'
+      preLoaderRoute: typeof LegalServiceSpecificTermsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/legal/supported-regions': {
+      id: '/legal/supported-regions'
+      path: '/legal/supported-regions'
+      fullPath: '/legal/supported-regions'
+      preLoaderRoute: typeof LegalSupportedRegionsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/legal/terms': {
+      id: '/legal/terms'
+      path: '/legal/terms'
+      fullPath: '/legal/terms'
+      preLoaderRoute: typeof LegalTermsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/legal/usage-policy': {
+      id: '/legal/usage-policy'
+      path: '/legal/usage-policy'
+      fullPath: '/legal/usage-policy'
+      preLoaderRoute: typeof LegalUsagePolicyRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/oauth/$provider': {
@@ -1336,6 +1417,10 @@ const rootRouteChildren: RootRouteChildren = {
   errors404Route: errors404Route,
   errors500Route: errors500Route,
   errors503Route: errors503Route,
+  LegalServiceSpecificTermsRoute: LegalServiceSpecificTermsRoute,
+  LegalSupportedRegionsRoute: LegalSupportedRegionsRoute,
+  LegalTermsRoute: LegalTermsRoute,
+  LegalUsagePolicyRoute: LegalUsagePolicyRoute,
   OauthProviderRoute: OauthProviderRoute,
   AboutIndexRoute: AboutIndexRoute,
   PricingIndexRoute: PricingIndexRoute,
