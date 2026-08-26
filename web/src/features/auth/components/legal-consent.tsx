@@ -23,6 +23,7 @@ import { Label } from '@/components/ui/label'
 import { cn } from '@/lib/utils'
 
 import type { SystemStatus } from '../types'
+import { LEGAL_DOCUMENTS } from './legal-documents'
 
 interface LegalConsentProps {
   status: SystemStatus | null
@@ -49,6 +50,16 @@ export function LegalConsent({
     onCheckedChange(value === true)
   }
 
+  const documents = [
+    ...LEGAL_DOCUMENTS,
+    ...(hasUserAgreement
+      ? [{ label: 'User Agreement', href: '/user-agreement' }]
+      : []),
+    ...(hasPrivacyPolicy
+      ? [{ label: 'Privacy Policy', href: '/privacy-policy' }]
+      : []),
+  ]
+
   return (
     <div
       className={cn(
@@ -67,29 +78,27 @@ export function LegalConsent({
         className='text-muted-foreground items-start gap-1 text-left text-xs leading-5 font-normal'
       >
         <span>
-          {t('I have read and agree to the')}{' '}
-          {hasUserAgreement && (
-            <a
-              href='/user-agreement'
-              target='_blank'
-              rel='noopener noreferrer'
-              className='text-primary hover:underline'
-            >
-              {t('User Agreement')}
-            </a>
+          {t(
+            'Before registering, signing in, topping up, creating an API Key, or using the service, please read and agree to'
+          )}{' '}
+          {documents.map((document, index) => (
+            <span key={document.href}>
+              {index > 0 &&
+                (index === documents.length - 1 ? ` ${t('and')} ` : ', ')}
+              <a
+                href={document.href}
+                target='_blank'
+                rel='noopener noreferrer'
+                className='text-primary hover:underline'
+              >
+                {t(document.label)}
+              </a>
+            </span>
+          ))}
+          .{' '}
+          {t(
+            'By continuing, you confirm that you meet the applicable account, regional, and compliance requirements.'
           )}
-          {hasUserAgreement && hasPrivacyPolicy && <> {t('and')} </>}
-          {hasPrivacyPolicy && (
-            <a
-              href='/privacy-policy'
-              target='_blank'
-              rel='noopener noreferrer'
-              className='text-primary hover:underline'
-            >
-              {t('Privacy Policy')}
-            </a>
-          )}
-          .
         </span>
       </Label>
     </div>

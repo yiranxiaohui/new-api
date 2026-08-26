@@ -21,6 +21,7 @@ import { useTranslation } from 'react-i18next'
 import { cn } from '@/lib/utils'
 
 import type { SystemStatus } from '../types'
+import { LEGAL_DOCUMENTS } from './legal-documents'
 
 interface TermsFooterProps {
   variant?: 'sign-in' | 'sign-up'
@@ -34,9 +35,9 @@ export function TermsFooter({
   status,
 }: TermsFooterProps) {
   const { t } = useTranslation()
-  const text =
+  const textKey =
     variant === 'sign-in'
-      ? 'By clicking sign in, you agree to our'
+      ? 'By signing in, you agree to our'
       : 'By creating an account, you agree to our'
 
   const hasUserAgreement = Boolean(status?.user_agreement_enabled)
@@ -46,48 +47,32 @@ export function TermsFooter({
     return null
   }
 
-  const agreementLink = {
-    label: 'User Agreement',
-    href: '/user-agreement',
-  }
-  const privacyLink = {
-    label: 'Privacy Policy',
-    href: '/privacy-policy',
-  }
-
-  const activeLinks =
-    hasUserAgreement || hasPrivacyPolicy
-      ? ([
-          hasUserAgreement ? agreementLink : null,
-          hasPrivacyPolicy ? privacyLink : null,
-        ].filter(Boolean) as Array<{ label: string; href: string }>)
-      : [agreementLink, privacyLink]
-
-  const [firstLink, secondLink] = activeLinks
+  const links = [
+    ...LEGAL_DOCUMENTS,
+    ...(hasUserAgreement
+      ? [{ label: 'User Agreement', href: '/user-agreement' }]
+      : []),
+    ...(hasPrivacyPolicy
+      ? [{ label: 'Privacy Policy', href: '/privacy-policy' }]
+      : []),
+  ]
 
   return (
     <p className={cn('text-muted-foreground text-center text-xs', className)}>
-      {text}{' '}
-      {firstLink && (
-        <a
-          href={firstLink.href}
-          className='hover:text-primary underline underline-offset-4'
-        >
-          {firstLink.label}
-        </a>
-      )}
-      {secondLink && (
-        <>
-          {' '}
-          {t('and')}{' '}
+      {t(textKey)}{' '}
+      {links.map((link, index) => (
+        <span key={link.href}>
+          {index > 0 && (index === links.length - 1 ? ` ${t('and')} ` : ', ')}
           <a
-            href={secondLink.href}
+            href={link.href}
+            target='_blank'
+            rel='noopener noreferrer'
             className='hover:text-primary underline underline-offset-4'
           >
-            {secondLink.label}
+            {t(link.label)}
           </a>
-        </>
-      )}
+        </span>
+      ))}
       .
     </p>
   )
