@@ -25,7 +25,7 @@ func TestMigrateNewAPIVideoChannelTypeRenumbersLegacyRows(t *testing.T) {
 	require.NoError(t, db.Create(&Task{TaskID: "task_a", Platform: constant.TaskPlatform("61"), ChannelId: 1}).Error)
 	require.NoError(t, db.Create(&Task{TaskID: "task_b", Platform: constant.TaskPlatform("55"), ChannelId: 2}).Error)
 
-	require.NoError(t, migrateNewAPIVideoChannelType(db))
+	require.NoError(t, migrateNewAPIVideoChannelType(db, true))
 
 	var video, openai Channel
 	require.NoError(t, db.First(&video, 1).Error)
@@ -46,13 +46,13 @@ func TestMigrateNewAPIVideoChannelTypeRenumbersLegacyRows(t *testing.T) {
 
 func TestMigrateNewAPIVideoChannelTypeLeavesTaskPluginChannelsAfterFirstRun(t *testing.T) {
 	db := newNewAPIVideoMigrationDB(t)
-	require.NoError(t, migrateNewAPIVideoChannelType(db))
+	require.NoError(t, migrateNewAPIVideoChannelType(db, true))
 
 	setting := `{"task_plugin_key":"kling"}`
 	require.NoError(t, db.Create(&Channel{Id: 3, Type: constant.ChannelTypeTaskPlugin, Name: "plugin", Key: "k", Setting: &setting}).Error)
 	require.NoError(t, db.Create(&Task{TaskID: "task_c", Platform: constant.TaskPlatform("61"), ChannelId: 3}).Error)
 
-	require.NoError(t, migrateNewAPIVideoChannelType(db))
+	require.NoError(t, migrateNewAPIVideoChannelType(db, true))
 
 	var plugin Channel
 	require.NoError(t, db.First(&plugin, 3).Error)
@@ -60,4 +60,27 @@ func TestMigrateNewAPIVideoChannelTypeLeavesTaskPluginChannelsAfterFirstRun(t *t
 	var taskC Task
 	require.NoError(t, db.Where("task_id = ?", "task_c").First(&taskC).Error)
 	assert.Equal(t, constant.TaskPlatform("61"), taskC.Platform)
+}
+
+func TestMigrateNewAPIVideoChannelTypeOnFreshInstallOnlyRecordsMarker(t *testing.T) {
+	db := newNewAPIVideoMigrationDB(t)
+
+	// Boot 1: the tables were just created by AutoMigrate.
+	require.NoError(t, migrateNewAPIVideoChannelType(db, false))
+	var marker Option
+	require.NoError(t, db.Where(&Option{Key: newAPIVideoChannelMigrationKey}).First(&marker).Error)
+
+	// Operator binds a real Task Plugin channel before the next restart.
+	setting := `{"task_plugin_key":"sora"}`
+	require.NoError(t, db.Create(&Channel{Id: 7, Type: constant.ChannelTypeTaskPlugin, Name: "plugin", Key: "k", Setting: &setting}).Error)
+	require.NoError(t, db.Create(&Task{TaskID: "task_p", Platform: constant.TaskPlatform("61"), ChannelId: 7}).Error)
+
+	// Boot 2: tables now exist, but the marker must stop the renumbering.
+	require.NoError(t, migrateNewAPIVideoChannelType(db, true))
+	var plugin Channel
+	require.NoError(t, db.First(&plugin, 7).Error)
+	assert.Equal(t, constant.ChannelTypeTaskPlugin, plugin.Type)
+	var task Task
+	require.NoError(t, db.Where("task_id = ?", "task_p").First(&task).Error)
+	assert.Equal(t, constant.TaskPlatform("61"), task.Platform)
 }

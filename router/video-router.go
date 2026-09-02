@@ -33,8 +33,8 @@ func SetVideoRouter(router *gin.Engine) {
 	router.POST(
 		"/v1/videos/generations",
 		middleware.RouteTag("relay"),
-		middleware.PinHostOwnedPluginRoute(xaiVideoPluginKey, xaiVideoGenerationRoute),
 		middleware.TokenAuth(),
+		middleware.PinHostOwnedPluginRoute(xaiVideoPluginKey, xaiVideoGenerationRoute),
 		middleware.SystemPerformanceCheck(),
 		middleware.ModelRequestRateLimit(),
 		middleware.PrepareTaskPluginRoute(),

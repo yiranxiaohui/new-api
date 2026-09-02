@@ -122,7 +122,7 @@ function validateGeneration(req) {
   const duration = durationOf(req.duration === undefined ? req.seconds : req.duration);
   if (duration !== undefined) body.duration = duration;
   if (req.aspect_ratio !== undefined) body.aspect_ratio = trimmed(req.aspect_ratio);
-  if (req.resolution !== undefined) body.resolution = trimmed(req.resolution).toLowerCase();
+  if (trimmed(req.resolution)) body.resolution = trimmed(req.resolution).toLowerCase();
   if (req.image !== undefined && req.image !== null) {
     if (!req.image || typeof req.image !== "object" || Array.isArray(req.image)) throw new Error("image must be an object");
     body.image = req.image;
@@ -360,13 +360,10 @@ export const protocols = {
         for (const file of ctx.body.files || []) {
           if (file.field !== "input_reference") throw new Error("unexpected file field: " + file.field);
           if (req.input_reference !== undefined) throw new Error("xAI image-to-video accepts one input_reference");
-          if (
-            !String(file.mimeType || "")
-              .toLowerCase()
-              .startsWith("image/")
-          )
-            throw new Error("input_reference must be an image");
-          req.input_reference = { __fileRef: file.ref, encoding: "dataUrl", mimeType: file.mimeType };
+          const mimeType = String(file.mimeType || "").toLowerCase();
+          const unknownMime = !mimeType || mimeType === "application/octet-stream";
+          if (!unknownMime && !mimeType.startsWith("image/")) throw new Error("input_reference must be an image");
+          req.input_reference = { __fileRef: file.ref, encoding: "dataUrl", mimeType: unknownMime ? "image/png" : mimeType };
         }
       }
       const converted = fromOpenAIVideo(

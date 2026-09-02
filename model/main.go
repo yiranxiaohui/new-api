@@ -321,9 +321,9 @@ func migrateDB() error {
 	if err := migratePrefillGroupUniqueness(DB); err != nil {
 		return err
 	}
-	if err := migrateNewAPIVideoChannelType(DB); err != nil {
-		return err
-	}
+	// Captured before AutoMigrate: a database created by this boot has no
+	// legacy New API Video rows, so the renumbering only records its marker.
+	hadChannelsTable := DB.Migrator().HasTable(&Channel{})
 	// Migrate price_amount column from float/double to decimal for existing tables
 	migrateSubscriptionPlanPriceAmount()
 	// Migrate model_limits column from varchar to text for existing tables
@@ -372,6 +372,9 @@ func migrateDB() error {
 		&AuthzRole{},
 	)
 	if err != nil {
+		return err
+	}
+	if err := migrateNewAPIVideoChannelType(DB, hadChannelsTable); err != nil {
 		return err
 	}
 	if err := InitializeUserAuthVersions(); err != nil {
