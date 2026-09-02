@@ -155,7 +155,8 @@ func TestXAIBillingRatiosFollowResolutionAndModel(t *testing.T) {
 			require.NoError(t, err)
 			ratios, ok := value.(map[string]any)
 			require.True(t, ok)
-			assert.InDelta(t, tt.want, ratios["resolution"], 1e-9)
+			assert.InDelta(t, tt.want, ratios["resolution-"+tt.resolution], 1e-9)
+			assert.Nil(t, ratios["resolution"], "the enum usage fact must not carry the numeric ratio")
 			assert.InDelta(t, 8, ratios["seconds"], 1e-9, "default duration applies when omitted")
 		})
 	}
@@ -186,4 +187,29 @@ func TestXAIParseTaskResultAndSubmitResponse(t *testing.T) {
 	failed, err := plugin.Engine.Call(t.Context(), "parseTaskResult", map[string]any{}, map[string]any{"status": "failed", "error": map[string]any{"message": "moderation"}})
 	require.NoError(t, err)
 	assert.Equal(t, "moderation", failed.(map[string]any)["reason"])
+}
+
+func TestXAIBillingRatiosPassHostUsageValidation(t *testing.T) {
+	plugin := loadXAIPlugin(t)
+	value, err := plugin.Engine.Call(t.Context(), "extractUsage", map[string]any{
+		"usagePurpose":  "billing_ratios",
+		"model":         "grok-imagine-video-1.5",
+		"upstreamModel": "grok-imagine-video-1.5",
+		"requestBody":   map[string]any{"model": "grok-imagine-video-1.5", "prompt": "p", "duration": 6, "resolution": "1080p"},
+	})
+	require.NoError(t, err)
+	facts, ok := value.(map[string]any)
+	require.True(t, ok)
+	for key, raw := range facts {
+		if schema, declared := plugin.Meta.UsageSchema[key]; declared {
+			require.Empty(t, schema.Enum, "ratio key %q must not collide with an enum usage fact", key)
+		}
+		_, numeric := raw.(float64)
+		if !numeric {
+			_, numeric = raw.(int64)
+		}
+		assert.True(t, numeric, "ratio %q must be numeric", key)
+	}
+	assert.InDelta(t, 3.125, facts["resolution-1080p"], 1e-9)
+	assert.InDelta(t, 6, facts["seconds"], 1e-9)
 }

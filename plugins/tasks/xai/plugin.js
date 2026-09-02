@@ -198,10 +198,14 @@ export function parseSubmitResponse(ctx, resp) {
   return { taskId: taskId, taskData: body };
 }
 
+// Billing multipliers live under a separate "resolution-<tier>" key: the
+// declared "resolution" usage fact is an enum and must stay a string.
 export function extractUsage(ctx) {
   const usage = usageOf(ctx);
   if (ctx.usagePurpose === "billing_ratios") {
-    return { seconds: usage.seconds, resolution: resolutionRatio(ctx.upstreamModel || ctx.model, usage.resolution) };
+    const ratios = { seconds: usage.seconds };
+    ratios["resolution-" + usage.resolution] = resolutionRatio(ctx.upstreamModel || ctx.model, usage.resolution);
+    return ratios;
   }
   return usage;
 }
