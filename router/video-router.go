@@ -1,61 +1,63 @@
 package router
 
 import (
+	"net/http"
+
 	"github.com/QuantumNous/new-api/controller"
 	"github.com/QuantumNous/new-api/middleware"
+	pluginruntime "github.com/QuantumNous/new-api/pkg/jsplugin"
 
 	"github.com/gin-gonic/gin"
 )
 
 func SetVideoRouter(router *gin.Engine) {
-	// Video proxy: accepts either session auth (dashboard) or token auth (API clients)
-	videoProxyRouter := router.Group("/v1")
-	videoProxyRouter.Use(middleware.RouteTag("relay"))
-	videoProxyRouter.Use(middleware.TokenOrUserAuth())
-	{
-		videoProxyRouter.GET("/videos/:task_id/content", controller.VideoProxy)
-	}
+	videoSharedRouter := router.Group("/v1")
+	videoSharedRouter.Use(middleware.RouteTag("relay"))
+	videoSharedRouter.Use(middleware.TokenAuth())
+	videoSharedRouter.Use(middleware.SystemPerformanceCheck())
+	videoSharedRouter.POST(
+		"/video/generations",
+		middleware.PinTaskPluginEndpoint(),
+		middleware.TaskPluginEndpointOnly(middleware.ModelRequestRateLimit()),
+		middleware.PrepareTaskPluginEndpoint(),
+		middleware.Distribute(),
+		func(c *gin.Context) {
+			controller.RelayTaskPluginEndpoint(c, controller.RelayTask)
+		},
+	)
+
+	// xAI-native video submit. The path shape /v1/videos/:segment collides with
+	// the host-owned OpenAI video retrieve operation, so the plugin router
+	// rejects it as a plugin-declared route; the host binds it to the factory
+	// xai plugin's native decode/render members instead.
+	router.POST(
+		"/v1/videos/generations",
+		middleware.RouteTag("relay"),
+		middleware.PinHostOwnedPluginRoute(xaiVideoPluginKey, xaiVideoGenerationRoute),
+		middleware.TokenAuth(),
+		middleware.SystemPerformanceCheck(),
+		middleware.ModelRequestRateLimit(),
+		middleware.PrepareTaskPluginRoute(),
+		middleware.Distribute(),
+		middleware.UserConcurrencyLimit(),
+		controller.RelayTask,
+	)
 
 	videoV1Router := router.Group("/v1")
 	videoV1Router.Use(middleware.RouteTag("relay"))
 	videoV1Router.Use(middleware.TokenAuth(), middleware.Distribute())
-	// Task submits hold a per-user concurrency slot; fetch routes stay on the
-	// outer group so polling is never 429'd by the limit.
-	videoSubmitRouter := videoV1Router.Group("")
-	videoSubmitRouter.Use(middleware.UserConcurrencyLimit())
 	{
-		videoSubmitRouter.POST("/video/generations", controller.RelayTask)
 		videoV1Router.GET("/video/generations/:task_id", controller.RelayTaskFetch)
-		videoSubmitRouter.POST("/videos/generations", controller.RelayTask)
-		videoSubmitRouter.POST("/videos/:video_id/remix", controller.RelayTask)
+		videoV1Router.POST("/videos/:video_id/remix", middleware.UserConcurrencyLimit(), controller.RelayTask)
 	}
-	// openai compatible API video routes
-	// docs: https://platform.openai.com/docs/api-reference/videos/create
-	{
-		videoSubmitRouter.POST("/videos", controller.RelayTask)
-		videoV1Router.GET("/videos/:task_id", controller.RelayTaskFetch)
-	}
+}
 
-	klingV1Router := router.Group("/kling/v1")
-	klingV1Router.Use(middleware.RouteTag("relay"))
-	klingV1Router.Use(middleware.KlingRequestConvert(), middleware.TokenAuth(), middleware.Distribute())
-	klingSubmitRouter := klingV1Router.Group("")
-	klingSubmitRouter.Use(middleware.UserConcurrencyLimit())
-	{
-		klingSubmitRouter.POST("/videos/text2video", controller.RelayTask)
-		klingSubmitRouter.POST("/videos/image2video", controller.RelayTask)
-		klingV1Router.GET("/videos/text2video/:task_id", controller.RelayTaskFetch)
-		klingV1Router.GET("/videos/image2video/:task_id", controller.RelayTaskFetch)
-	}
+const xaiVideoPluginKey = "xai"
 
-	// Jimeng official API routes - direct mapping to official API format
-	jimengOfficialGroup := router.Group("jimeng")
-	jimengOfficialGroup.Use(middleware.RouteTag("relay"))
-	jimengOfficialGroup.Use(middleware.JimengRequestConvert(), middleware.TokenAuth(), middleware.Distribute())
-	{
-		// Maps to: /?Action=CVSync2AsyncSubmitTask&Version=2022-08-31 and /?Action=CVSync2AsyncGetResult&Version=2022-08-31
-		// One route serves both submit and result polling, so the concurrency
-		// slot is held only for the short HTTP exchange either way.
-		jimengOfficialGroup.POST("/", middleware.UserConcurrencyLimit(), controller.RelayTask)
-	}
+var xaiVideoGenerationRoute = pluginruntime.Route{
+	Method: http.MethodPost,
+	Path:   "/v1/videos/generations",
+	Type:   pluginruntime.RouteTypeSubmit,
+	Decode: "decodeGeneration",
+	Render: "generationCreated",
 }
