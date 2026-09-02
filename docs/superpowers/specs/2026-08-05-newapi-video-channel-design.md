@@ -67,3 +67,13 @@
 - 渠道 ID 61 为新增，不影响既有渠道数据。
 - responseTask 新增的兼容解析字段均为 `omitempty` 可选字段，对现有 Sora 渠道解析无行为变化。
 - 数据库无 schema 变更。
+
+## 2026-09-02 更新：迁移到 JS 任务插件体系
+
+上游 #7076 用沙箱 JS 任务插件替换了全部 Go 视频任务适配器，并把渠道类型 61 保留给「Task Plugin」。本设计随之调整：
+
+- 渠道类型编号改为 **62**（`constant.ChannelTypeNewAPIVideo`）。`model/newapi_video_channel_migration.go` 在首次启动时把旧的 61 渠道及其任务的 `platform` 一次性改为 62，并用 `options` 表的 `migration.newapi_video_channel_type` 标记防止重复执行；之后新建的 61 类型渠道均视为上游的 Task Plugin。
+- Sora 适配器分支被出厂插件 `plugins/tasks/newapi-video/plugin.js` 取代：`channelTypes: [62]`，提交走 `POST {base}/v1/video/generations`、查询走 `GET {base}/v1/videos/{id}`，仅接受 JSON 体，remix 直接拒绝，`extractUsage` 在 `billing_ratios` 用途下返回空对象以维持按次固定计费。
+- 成片下载由插件的 `listArtifacts` / `buildContentRequest` 提供：查询响应中带绝对 URL 时以 credentialless 方式代理；若上游返回自身的 `/v1/videos/{id}/content` 或未返回 URL，则改为携带渠道密钥请求 `{base}/v1/videos/{upstream_id}/content`。
+- 前后端都要求该类型渠道填写 Base URL（`controller/channel.go` 与 `web/src/features/channels/lib/channel-form.ts`）。
+- xAI 视频（原 `relay/channel/task/xai`）同样改写为出厂插件 `plugins/tasks/xai/plugin.js`（`channelTypes: [48]`）。其原生入口 `POST /v1/videos/generations` 与宿主协议路径 `/v1/videos/:task_id` 形状冲突，插件路由器会拒绝注册，因此改由 `router/video-router.go` 通过 `middleware.PinHostOwnedPluginRoute` 绑定到插件的 `native.decodeGeneration` / `native.generationCreated`。
