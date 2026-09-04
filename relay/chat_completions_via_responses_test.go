@@ -39,6 +39,36 @@ func TestIsResponsesEventStreamContentType(t *testing.T) {
 	}
 }
 
+func TestRemoveUnsupportedPreviousResponseID(t *testing.T) {
+	tests := []struct {
+		name        string
+		channelType int
+		relayMode   int
+		wantPresent bool
+	}{
+		{name: "codex HTTP", channelType: constant.ChannelTypeCodex, relayMode: relayconstant.RelayModeResponses, wantPresent: false},
+		{name: "sub2api HTTP", channelType: constant.ChannelTypeSub2API, relayMode: relayconstant.RelayModeResponses, wantPresent: false},
+		{name: "OpenAI HTTP", channelType: constant.ChannelTypeOpenAI, relayMode: relayconstant.RelayModeResponses, wantPresent: true},
+		{name: "sub2api compaction", channelType: constant.ChannelTypeSub2API, relayMode: relayconstant.RelayModeResponsesCompact, wantPresent: true},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			info := &relaycommon.RelayInfo{
+				ChannelMeta: &relaycommon.ChannelMeta{ChannelType: tt.channelType},
+				RelayMode:   tt.relayMode,
+			}
+			body, err := removeUnsupportedPreviousResponseID([]byte(`{"previous_response_id":"resp_1","input":"hello"}`), info)
+			require.NoError(t, err)
+
+			var payload map[string]any
+			require.NoError(t, common.Unmarshal(body, &payload))
+			_, present := payload["previous_response_id"]
+			assert.Equal(t, tt.wantPresent, present)
+		})
+	}
+}
+
 func TestRecalcQuotaFromRatiosIgnoresInvalidMultipliers(t *testing.T) {
 	info := &relaycommon.RelayInfo{
 		PriceData: hosttypes.PriceData{

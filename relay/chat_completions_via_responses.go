@@ -141,6 +141,10 @@ func relayResponsesRequest(c *gin.Context, info *relaycommon.RelayInfo, adaptor 
 			return nil, newAPIErrorFromParamOverride(err)
 		}
 	}
+	jsonData, err = removeUnsupportedPreviousResponseID(jsonData, info)
+	if err != nil {
+		return nil, types.NewError(err, types.ErrorCodeConvertRequestFailed, types.ErrOptionWithSkipRetry())
+	}
 
 	body, closer, err := relaycommon.NewOutboundJSONBody(jsonData)
 	if err != nil {
