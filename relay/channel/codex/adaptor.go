@@ -16,6 +16,7 @@ import (
 	"github.com/QuantumNous/new-api/relaykit/types"
 
 	"github.com/gin-gonic/gin"
+	"github.com/gorilla/websocket"
 )
 
 type Adaptor struct {
@@ -104,7 +105,9 @@ func (a *Adaptor) ConvertOpenAIResponsesRequest(c *gin.Context, info *relaycommo
 	// accounts. Keep regular Codex requests stateless to avoid an upstream
 	// 400; the compaction endpoint retains the field because it is part of
 	// that endpoint's supported request contract.
-	request.PreviousResponseID = ""
+	if c == nil || c.Request == nil || !websocket.IsWebSocketUpgrade(c.Request) {
+		request.PreviousResponseID = ""
+	}
 	// codex: store must be false
 	request.Store = json.RawMessage("false")
 	// rm max_output_tokens

@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"github.com/QuantumNous/new-api/common"
+	"github.com/QuantumNous/new-api/constant"
 	"github.com/QuantumNous/new-api/logger"
 	relaycommon "github.com/QuantumNous/new-api/relay/common"
 	relayconstant "github.com/QuantumNous/new-api/relay/constant"
@@ -17,7 +18,27 @@ import (
 	"github.com/QuantumNous/new-api/setting/model_setting"
 
 	"github.com/gin-gonic/gin"
+	"github.com/tidwall/gjson"
+	"github.com/tidwall/sjson"
 )
+
+func shouldRemoveUnsupportedPreviousResponseID(info *relaycommon.RelayInfo) bool {
+	if info == nil || info.RelayMode != relayconstant.RelayModeResponses {
+		return false
+	}
+	channelType := info.GetChannelType()
+	return channelType == constant.ChannelTypeCodex || channelType == constant.ChannelTypeSub2API
+}
+
+func removeUnsupportedPreviousResponseID(jsonData []byte, info *relaycommon.RelayInfo) ([]byte, error) {
+	if !shouldRemoveUnsupportedPreviousResponseID(info) {
+		return jsonData, nil
+	}
+	if !gjson.GetBytes(jsonData, "previous_response_id").Exists() {
+		return jsonData, nil
+	}
+	return sjson.DeleteBytes(jsonData, "previous_response_id")
+}
 
 func ResponsesHelper(c *gin.Context, info *relaycommon.RelayInfo) (newAPIError *types.NewAPIError) {
 	info.InitChannelMeta(c)
@@ -85,7 +106,26 @@ func ResponsesHelper(c *gin.Context, info *relaycommon.RelayInfo) (newAPIError *
 		if err != nil {
 			return types.NewError(err, types.ErrorCodeReadRequestBodyFailed, types.ErrOptionWithSkipRetry())
 		}
-		requestBody = common.NewReplayableBodyReader(storage)
+		if !shouldRemoveUnsupportedPreviousResponseID(info) || strings.TrimSpace(request.PreviousResponseID) == "" {
+			// Keep the original replayable storage when no compatibility rewrite
+			// is needed; this avoids materializing large pass-through bodies.
+			requestBody = common.NewReplayableBodyReader(storage)
+		} else {
+			requestBytes, err := storage.Bytes()
+			if err != nil {
+				return types.NewError(err, types.ErrorCodeReadRequestBodyFailed, types.ErrOptionWithSkipRetry())
+			}
+			requestBytes, err = removeUnsupportedPreviousResponseID(requestBytes, info)
+			if err != nil {
+				return types.NewError(err, types.ErrorCodeConvertRequestFailed, types.ErrOptionWithSkipRetry())
+			}
+			body, closer, err := relaycommon.NewOutboundJSONBody(requestBytes)
+			if err != nil {
+				return types.NewError(err, types.ErrorCodeConvertRequestFailed, types.ErrOptionWithSkipRetry())
+			}
+			defer closer.Close()
+			requestBody = body
+		}
 	} else {
 		convertedRequest, err := adaptor.ConvertOpenAIResponsesRequest(c, info, *request)
 		if err != nil {
@@ -109,6 +149,10 @@ func ResponsesHelper(c *gin.Context, info *relaycommon.RelayInfo) (newAPIError *
 			if err != nil {
 				return newAPIErrorFromParamOverride(err)
 			}
+		}
+		jsonData, err = removeUnsupportedPreviousResponseID(jsonData, info)
+		if err != nil {
+			return types.NewError(err, types.ErrorCodeConvertRequestFailed, types.ErrOptionWithSkipRetry())
 		}
 
 		logger.LogDebug(c, "requestBody: %s", jsonData)
