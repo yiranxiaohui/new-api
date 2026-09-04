@@ -54,3 +54,45 @@ func TestConvertOpenAIResponsesRequestDropsPenalties(t *testing.T) {
 	assert.Nil(t, request.FrequencyPenalty)
 	assert.Nil(t, request.PresencePenalty)
 }
+
+func TestConvertOpenAIResponsesRequestDropsPreviousResponseID(t *testing.T) {
+	adaptor := &Adaptor{}
+	info := &relaycommon.RelayInfo{
+		ChannelMeta: &relaycommon.ChannelMeta{ChannelType: constant.ChannelTypeCodex},
+		RelayMode:   relayconstant.RelayModeResponses,
+	}
+
+	converted, err := adaptor.ConvertOpenAIResponsesRequest(nil, info, dto.OpenAIResponsesRequest{
+		Model:              "gpt-5-codex",
+		Input:              json.RawMessage(`"hello"`),
+		PreviousResponseID: "resp_previous",
+	})
+	require.NoError(t, err)
+
+	request, ok := converted.(dto.OpenAIResponsesRequest)
+	require.True(t, ok)
+	assert.Empty(t, request.PreviousResponseID)
+
+	body, err := request.MarshalJSON()
+	require.NoError(t, err)
+	assert.NotContains(t, string(body), `"previous_response_id"`)
+}
+
+func TestConvertOpenAIResponsesRequestKeepsPreviousResponseIDForCompaction(t *testing.T) {
+	adaptor := &Adaptor{}
+	info := &relaycommon.RelayInfo{
+		ChannelMeta: &relaycommon.ChannelMeta{ChannelType: constant.ChannelTypeCodex},
+		RelayMode:   relayconstant.RelayModeResponsesCompact,
+	}
+
+	converted, err := adaptor.ConvertOpenAIResponsesRequest(nil, info, dto.OpenAIResponsesRequest{
+		Model:              "gpt-5-codex",
+		Input:              json.RawMessage(`"hello"`),
+		PreviousResponseID: "resp_previous",
+	})
+	require.NoError(t, err)
+
+	request, ok := converted.(dto.OpenAIResponsesRequest)
+	require.True(t, ok)
+	assert.Equal(t, "resp_previous", request.PreviousResponseID)
+}

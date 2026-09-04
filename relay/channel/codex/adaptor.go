@@ -99,6 +99,12 @@ func (a *Adaptor) ConvertOpenAIResponsesRequest(c *gin.Context, info *relaycommo
 	if isCompact {
 		return request, nil
 	}
+	// ChatGPT/Codex OAuth accounts cannot use the Responses API's
+	// previous_response_id state, which is restricted to OpenAI API-key
+	// accounts. Keep regular Codex requests stateless to avoid an upstream
+	// 400; the compaction endpoint retains the field because it is part of
+	// that endpoint's supported request contract.
+	request.PreviousResponseID = ""
 	// codex: store must be false
 	request.Store = json.RawMessage("false")
 	// rm max_output_tokens

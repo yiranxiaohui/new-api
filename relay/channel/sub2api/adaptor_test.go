@@ -47,6 +47,48 @@ func TestAdaptorInheritsNewAPIResponsesCompactSupport(t *testing.T) {
 	assert.Empty(t, adaptor.GetModelList())
 }
 
+func TestConvertOpenAIResponsesRequestDropsPreviousResponseID(t *testing.T) {
+	adaptor := &Adaptor{}
+	info := &relaycommon.RelayInfo{
+		ChannelMeta: &relaycommon.ChannelMeta{ChannelType: constant.ChannelTypeSub2API},
+		RelayMode:   relayconstant.RelayModeResponses,
+	}
+
+	converted, err := adaptor.ConvertOpenAIResponsesRequest(nil, info, dto.OpenAIResponsesRequest{
+		Model:              "gpt-5.3-codex",
+		Input:              json.RawMessage(`"hello"`),
+		PreviousResponseID: "resp_previous",
+	})
+	require.NoError(t, err)
+
+	request, ok := converted.(dto.OpenAIResponsesRequest)
+	require.True(t, ok)
+	assert.Empty(t, request.PreviousResponseID)
+
+	body, err := request.MarshalJSON()
+	require.NoError(t, err)
+	assert.NotContains(t, string(body), `"previous_response_id"`)
+}
+
+func TestConvertOpenAIResponsesRequestKeepsPreviousResponseIDForCompaction(t *testing.T) {
+	adaptor := &Adaptor{}
+	info := &relaycommon.RelayInfo{
+		ChannelMeta: &relaycommon.ChannelMeta{ChannelType: constant.ChannelTypeSub2API},
+		RelayMode:   relayconstant.RelayModeResponsesCompact,
+	}
+
+	converted, err := adaptor.ConvertOpenAIResponsesRequest(nil, info, dto.OpenAIResponsesRequest{
+		Model:              "gpt-5.3-codex",
+		Input:              json.RawMessage(`"hello"`),
+		PreviousResponseID: "resp_previous",
+	})
+	require.NoError(t, err)
+
+	request, ok := converted.(dto.OpenAIResponsesRequest)
+	require.True(t, ok)
+	assert.Equal(t, "resp_previous", request.PreviousResponseID)
+}
+
 func TestConvertClaudeRequestPreservesAdaptiveThinkingForCompatibleModel(t *testing.T) {
 	adaptor := &Adaptor{}
 	maxTokens := uint(8192)
