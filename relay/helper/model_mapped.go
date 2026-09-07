@@ -1,27 +1,28 @@
 package helper
 
 import (
-	"encoding/json"
 	"errors"
 	"fmt"
 
-	"github.com/QuantumNous/new-api/relay/common"
+	rootcommon "github.com/QuantumNous/new-api/common"
+	relaycommon "github.com/QuantumNous/new-api/relay/common"
 	"github.com/QuantumNous/new-api/relaykit/dto"
+	hostreasoning "github.com/QuantumNous/new-api/setting/reasoning"
 	"github.com/gin-gonic/gin"
 	"github.com/tidwall/gjson"
 	"github.com/tidwall/sjson"
 )
 
-func ModelMappedHelper(c *gin.Context, info *common.RelayInfo, request dto.Request) error {
+func ModelMappedHelper(c *gin.Context, info *relaycommon.RelayInfo, request dto.Request) error {
 	if info.ChannelMeta == nil {
-		info.ChannelMeta = &common.ChannelMeta{}
+		info.ChannelMeta = &relaycommon.ChannelMeta{}
 	}
 
 	// map model name
 	modelMapping := c.GetString("model_mapping")
 	if modelMapping != "" && modelMapping != "{}" {
 		modelMap := make(map[string]string)
-		err := json.Unmarshal([]byte(modelMapping), &modelMap)
+		err := rootcommon.Unmarshal([]byte(modelMapping), &modelMap)
 		if err != nil {
 			return fmt.Errorf("unmarshal_model_mapping_failed")
 		}
@@ -32,17 +33,22 @@ func ModelMappedHelper(c *gin.Context, info *common.RelayInfo, request dto.Reque
 			currentModel: true,
 		}
 		for {
-			if mappedModel, exists := modelMap[currentModel]; exists && mappedModel != "" {
+			mappedModel, exists := modelMap[currentModel]
+			baseModel := hostreasoning.BaseModelName(currentModel)
+			if (!exists || mappedModel == "") && baseModel != currentModel {
+				mappedModel, exists = modelMap[baseModel]
+			}
+			if exists && mappedModel != "" {
 				// 模型重定向循环检测，避免无限循环
 				if visitedModels[mappedModel] {
 					if mappedModel == currentModel {
 						if currentModel == info.OriginModelName {
 							info.IsModelMapped = false
 							return nil
-						} else {
-							info.IsModelMapped = true
-							break
 						}
+
+						info.IsModelMapped = true
+						break
 					}
 					return errors.New("model_mapping_contains_cycle")
 				}
@@ -66,7 +72,7 @@ func ModelMappedHelper(c *gin.Context, info *common.RelayInfo, request dto.Reque
 
 // GetResponseModelName returns the model name that should be shown to the client.
 // When model mapping is active, it returns the original model name the client requested.
-func GetResponseModelName(info *common.RelayInfo) string {
+func GetResponseModelName(info *relaycommon.RelayInfo) string {
 	if info == nil {
 		return ""
 	}
@@ -83,7 +89,7 @@ func GetResponseModelName(info *common.RelayInfo) string {
 
 // ReplaceResponseModel replaces the "model" field in JSON response with the original model name
 // when model mapping is active. Returns the original data unchanged if no mapping is configured.
-func ReplaceResponseModel(data []byte, info *common.RelayInfo) []byte {
+func ReplaceResponseModel(data []byte, info *relaycommon.RelayInfo) []byte {
 	if info == nil || info.ChannelMeta == nil || !info.IsModelMapped {
 		return data
 	}
@@ -105,7 +111,7 @@ func ReplaceResponseModel(data []byte, info *common.RelayInfo) []byte {
 }
 
 // ReplaceResponseModelStr is the string version of ReplaceResponseModel.
-func ReplaceResponseModelStr(data string, info *common.RelayInfo) string {
+func ReplaceResponseModelStr(data string, info *relaycommon.RelayInfo) string {
 	if info == nil || info.ChannelMeta == nil || !info.IsModelMapped {
 		return data
 	}
