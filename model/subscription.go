@@ -33,6 +33,8 @@ const (
 	SubscriptionResetCustom  = "custom"
 )
 
+const defaultSubscriptionUsageWindowTimezone = "UTC"
+
 var (
 	ErrSubscriptionOrderNotFound      = errors.New("subscription order not found")
 	ErrSubscriptionOrderStatusInvalid = errors.New("subscription order status invalid")
@@ -185,6 +187,12 @@ type SubscriptionPlan struct {
 	QuotaResetPeriod        string `json:"quota_reset_period" gorm:"type:varchar(16);default:'never'"`
 	QuotaResetCustomSeconds int64  `json:"quota_reset_custom_seconds" gorm:"type:bigint;default:0"`
 
+	// Optional daily recurring window during which subscription quota may be used.
+	// Empty start and end mean the subscription is available all day.
+	UsageWindowStart    string `json:"usage_window_start" gorm:"type:varchar(5);not null;default:''"`
+	UsageWindowEnd      string `json:"usage_window_end" gorm:"type:varchar(5);not null;default:''"`
+	UsageWindowTimezone string `json:"usage_window_timezone" gorm:"type:varchar(64);not null;default:'UTC'"`
+
 	CreatedAt int64 `json:"created_at" gorm:"bigint"`
 	UpdatedAt int64 `json:"updated_at" gorm:"bigint"`
 }
@@ -208,6 +216,80 @@ func (p *SubscriptionPlan) NormalizeDefaults() {
 	if p.AllowWalletOverflow == nil {
 		p.AllowWalletOverflow = common.GetPointer(true)
 	}
+	if strings.TrimSpace(p.UsageWindowTimezone) == "" {
+		p.UsageWindowTimezone = defaultSubscriptionUsageWindowTimezone
+	}
+}
+
+// ValidateUsageWindow validates the optional daily recurring subscription window.
+func (p *SubscriptionPlan) ValidateUsageWindow() error {
+	if p == nil {
+		return errors.New("usage window plan is nil")
+	}
+	_, _, _, _, err := p.usageWindowConfig()
+	return err
+}
+
+// IsWithinUsageWindow reports whether subscription quota may be used at the supplied time.
+// The interval is left-closed/right-open and supports windows crossing midnight.
+func (p *SubscriptionPlan) IsWithinUsageWindow(at time.Time) bool {
+	start, end, location, configured, err := p.usageWindowConfig()
+	if err != nil {
+		return false
+	}
+	if !configured {
+		return true
+	}
+
+	localTime := at.In(location)
+	minute := localTime.Hour()*60 + localTime.Minute()
+	if start < end {
+		return minute >= start && minute < end
+	}
+	return minute >= start || minute < end
+}
+
+func (p *SubscriptionPlan) usageWindowConfig() (int, int, *time.Location, bool, error) {
+	startValue := strings.TrimSpace(p.UsageWindowStart)
+	endValue := strings.TrimSpace(p.UsageWindowEnd)
+	timezone := strings.TrimSpace(p.UsageWindowTimezone)
+	if timezone == "" {
+		timezone = defaultSubscriptionUsageWindowTimezone
+	}
+	location, err := time.LoadLocation(timezone)
+	if err != nil {
+		return 0, 0, nil, true, fmt.Errorf("invalid usage window timezone: %w", err)
+	}
+	if startValue == "" && endValue == "" {
+		return 0, 0, location, false, nil
+	}
+	if startValue == "" || endValue == "" {
+		return 0, 0, nil, true, errors.New("usage window start and end must both be set")
+	}
+
+	start, err := parseSubscriptionUsageWindowMinute(startValue)
+	if err != nil {
+		return 0, 0, nil, true, fmt.Errorf("invalid usage window start: %w", err)
+	}
+	end, err := parseSubscriptionUsageWindowMinute(endValue)
+	if err != nil {
+		return 0, 0, nil, true, fmt.Errorf("invalid usage window end: %w", err)
+	}
+	if start == end {
+		return 0, 0, nil, true, errors.New("usage window start and end must differ")
+	}
+	return start, end, location, true, nil
+}
+
+func parseSubscriptionUsageWindowMinute(value string) (int, error) {
+	if len(value) != 5 || value[2] != ':' {
+		return 0, errors.New("must use HH:mm format")
+	}
+	parsed, err := time.Parse("15:04", value)
+	if err != nil {
+		return 0, errors.New("must use HH:mm format")
+	}
+	return parsed.Hour()*60 + parsed.Minute(), nil
 }
 
 // Subscription order (payment -> webhook -> create UserSubscription)
@@ -876,6 +958,29 @@ func HasActiveUserSubscription(userId int) (bool, error) {
 	return count > 0, nil
 }
 
+// HasActiveUserSubscriptionInUsageWindow reports whether at least one active
+// subscription is eligible for billing at the supplied time.
+func HasActiveUserSubscriptionInUsageWindow(userId int, at time.Time) (bool, error) {
+	if userId <= 0 {
+		return false, errors.New("invalid userId")
+	}
+	var subs []UserSubscription
+	if err := DB.Where("user_id = ? AND status = ? AND end_time > ?", userId, "active", at.Unix()).
+		Find(&subs).Error; err != nil {
+		return false, err
+	}
+	for _, sub := range subs {
+		plan, err := GetSubscriptionPlanById(sub.PlanId)
+		if err != nil {
+			return false, err
+		}
+		if plan.IsWithinUsageWindow(at) {
+			return true, nil
+		}
+	}
+	return false, nil
+}
+
 // UserActiveSubscriptionsAllowWalletOverflow returns whether wallet balance may be used
 // after the user's subscription quota is exhausted. A single active subscription that
 // disallows wallet overflow (allow_wallet_overflow = false) blocks the fallback.
@@ -892,6 +997,30 @@ func UserActiveSubscriptionsAllowWalletOverflow(userId int) (bool, error) {
 		return false, err
 	}
 	return strictCount == 0, nil
+}
+
+// UserActiveSubscriptionsAllowWalletOverflowInUsageWindow checks the fallback
+// policy only for subscriptions eligible at the supplied time. Subscriptions
+// outside their configured window must not block wallet billing.
+func UserActiveSubscriptionsAllowWalletOverflowInUsageWindow(userId int, at time.Time) (bool, error) {
+	if userId <= 0 {
+		return false, errors.New("invalid userId")
+	}
+	var subs []UserSubscription
+	if err := DB.Where("user_id = ? AND status = ? AND end_time > ?", userId, "active", at.Unix()).
+		Find(&subs).Error; err != nil {
+		return false, err
+	}
+	for _, sub := range subs {
+		plan, err := GetSubscriptionPlanById(sub.PlanId)
+		if err != nil {
+			return false, err
+		}
+		if plan.IsWithinUsageWindow(at) && !sub.AllowWalletOverflow {
+			return false, nil
+		}
+	}
+	return true, nil
 }
 
 // GetAllUserSubscriptions returns all subscriptions (active and expired) for a user.
@@ -1346,6 +1475,9 @@ func PreConsumeUserSubscription(requestId string, userId int, modelName string, 
 			plan, err := getSubscriptionPlanByIdTx(tx, sub.PlanId)
 			if err != nil {
 				return err
+			}
+			if !plan.IsWithinUsageWindow(time.Unix(now, 0)) {
+				continue
 			}
 			if err := maybeResetUserSubscriptionWithPlanTx(tx, &sub, plan, now); err != nil {
 				return err

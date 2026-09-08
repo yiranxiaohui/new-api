@@ -51,7 +51,11 @@ import {
   updateBillingPreference,
 } from '@/features/subscriptions/api'
 import { SubscriptionPurchaseDialog } from '@/features/subscriptions/components/dialogs/subscription-purchase-dialog'
-import { formatDuration, formatResetPeriod } from '@/features/subscriptions/lib'
+import {
+  formatDuration,
+  formatResetPeriod,
+  formatUsageWindow,
+} from '@/features/subscriptions/lib'
 import type {
   PlanRecord,
   UserSubscriptionRecord,
@@ -109,6 +113,9 @@ export function SubscriptionPlansCard({
   >([])
   const [billingPreference, setBillingPreference] =
     useState('subscription_first')
+  const [currentTimestamp, setCurrentTimestamp] = useState(
+    () => Date.now() / 1000
+  )
   const [loading, setLoading] = useState(true)
   const [refreshing, setRefreshing] = useState(false)
 
@@ -163,6 +170,7 @@ export function SubscriptionPlansCard({
     setRefreshing(true)
     try {
       await fetchSelfSubscription()
+      setCurrentTimestamp(Date.now() / 1000)
     } finally {
       setRefreshing(false)
     }
@@ -222,8 +230,7 @@ export function SubscriptionPlansCard({
   const getRemainingDays = (sub: UserSubscriptionRecord) => {
     const endTime = sub?.subscription?.end_time || 0
     if (!endTime) return 0
-    const now = Date.now() / 1000
-    return Math.max(0, Math.ceil((endTime - now) / 86400))
+    return Math.max(0, Math.ceil((endTime - currentTimestamp) / 86400))
   }
 
   const getUsagePercent = (sub: UserSubscriptionRecord) => {
@@ -405,8 +412,8 @@ export function SubscriptionPlansCard({
                     planTitleMap.get(subscription?.plan_id) || ''
                   const remainDays = getRemainingDays(sub)
                   const usagePercent = getUsagePercent(sub)
-                  const now = Date.now() / 1000
-                  const isExpired = (subscription?.end_time || 0) < now
+                  const isExpired =
+                    (subscription?.end_time || 0) < currentTimestamp
                   const isCancelled = subscription?.status === 'cancelled'
                   const isActive =
                     subscription?.status === 'active' && !isExpired
@@ -536,6 +543,9 @@ export function SubscriptionPlansCard({
                 `${t('Validity Period')}: ${formatDuration(plan, t)}`,
                 formatResetPeriod(plan, t) !== t('No Reset')
                   ? `${t('Quota Reset')}: ${formatResetPeriod(plan, t)}`
+                  : null,
+                plan.usage_window_start && plan.usage_window_end
+                  ? `${t('Usage Window')}: ${formatUsageWindow(plan, t)}`
                   : null,
                 totalAmount > 0
                   ? `${t('Total Quota')}: ${formatQuota(totalAmount)}`

@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/logger"
@@ -415,6 +416,20 @@ func NewBillingSession(c *gin.Context, relayInfo *relaycommon.RelayInfo, preCons
 
 	switch pref {
 	case "subscription_only":
+		billingAt := time.Unix(model.GetDBTimestamp(), 0)
+		hasEligibleSub, subCheckErr := model.HasActiveUserSubscriptionInUsageWindow(relayInfo.UserId, billingAt)
+		if subCheckErr != nil {
+			return nil, types.NewError(subCheckErr, types.ErrorCodeQueryDataError, types.ErrOptionWithSkipRetry())
+		}
+		if !hasEligibleSub {
+			hasActiveSub, activeCheckErr := model.HasActiveUserSubscription(relayInfo.UserId)
+			if activeCheckErr != nil {
+				return nil, types.NewError(activeCheckErr, types.ErrorCodeQueryDataError, types.ErrOptionWithSkipRetry())
+			}
+			if hasActiveSub {
+				return tryWallet()
+			}
+		}
 		return trySubscription()
 	case "wallet_only":
 		return tryWallet()
@@ -430,7 +445,8 @@ func NewBillingSession(c *gin.Context, relayInfo *relaycommon.RelayInfo, preCons
 	case "subscription_first":
 		fallthrough
 	default:
-		hasSub, subCheckErr := model.HasActiveUserSubscription(relayInfo.UserId)
+		billingAt := time.Unix(model.GetDBTimestamp(), 0)
+		hasSub, subCheckErr := model.HasActiveUserSubscriptionInUsageWindow(relayInfo.UserId, billingAt)
 		if subCheckErr != nil {
 			return nil, types.NewError(subCheckErr, types.ErrorCodeQueryDataError, types.ErrOptionWithSkipRetry())
 		}
@@ -441,7 +457,7 @@ func NewBillingSession(c *gin.Context, relayInfo *relaycommon.RelayInfo, preCons
 		if apiErr != nil {
 			if apiErr.GetErrorCode() == types.ErrorCodeInsufficientUserQuota {
 				// 仅当用户的活跃订阅允许钱包回退时才回退到钱包，否则返回订阅额度不足错误
-				allowOverflow, overflowErr := model.UserActiveSubscriptionsAllowWalletOverflow(relayInfo.UserId)
+				allowOverflow, overflowErr := model.UserActiveSubscriptionsAllowWalletOverflowInUsageWindow(relayInfo.UserId, billingAt)
 				if overflowErr != nil {
 					return nil, types.NewError(overflowErr, types.ErrorCodeQueryDataError, types.ErrOptionWithSkipRetry())
 				}

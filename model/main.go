@@ -530,6 +530,9 @@ func ensureSubscriptionPlanTableSQLite() error {
 ` + "`total_amount`" + ` bigint NOT NULL DEFAULT 0,
 ` + "`quota_reset_period`" + ` varchar(16) DEFAULT 'never',
 ` + "`quota_reset_custom_seconds`" + ` bigint DEFAULT 0,
+` + "`usage_window_start`" + ` varchar(5) NOT NULL DEFAULT '',
+` + "`usage_window_end`" + ` varchar(5) NOT NULL DEFAULT '',
+` + "`usage_window_timezone`" + ` varchar(64) NOT NULL DEFAULT 'UTC',
 ` + "`created_at`" + ` bigint,
 ` + "`updated_at`" + ` bigint,
 PRIMARY KEY (` + "`id`" + `)
@@ -567,6 +570,9 @@ PRIMARY KEY (` + "`id`" + `)
 		{Name: "total_amount", DDL: "`total_amount` bigint NOT NULL DEFAULT 0"},
 		{Name: "quota_reset_period", DDL: "`quota_reset_period` varchar(16) DEFAULT 'never'"},
 		{Name: "quota_reset_custom_seconds", DDL: "`quota_reset_custom_seconds` bigint DEFAULT 0"},
+		{Name: "usage_window_start", DDL: "`usage_window_start` varchar(5) NOT NULL DEFAULT ''"},
+		{Name: "usage_window_end", DDL: "`usage_window_end` varchar(5) NOT NULL DEFAULT ''"},
+		{Name: "usage_window_timezone", DDL: "`usage_window_timezone` varchar(64) NOT NULL DEFAULT 'UTC'"},
 		{Name: "created_at", DDL: "`created_at` bigint"},
 		{Name: "updated_at", DDL: "`updated_at` bigint"},
 	}

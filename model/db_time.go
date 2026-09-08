@@ -5,6 +5,10 @@ import "github.com/QuantumNous/new-api/common"
 // GetDBTimestamp returns a UNIX timestamp from database time.
 // Falls back to application time on error.
 func GetDBTimestamp() int64 {
+	if DB == nil {
+		return common.GetTimestamp()
+	}
+
 	var ts int64
 	var err error
 	switch {

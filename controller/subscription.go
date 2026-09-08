@@ -138,6 +138,19 @@ type AdminUpsertSubscriptionPlanRequest struct {
 	Plan model.SubscriptionPlan `json:"plan"`
 }
 
+func normalizeSubscriptionPlanUsageWindow(plan *model.SubscriptionPlan) error {
+	if plan == nil {
+		return fmt.Errorf("套餐不能为空")
+	}
+	plan.UsageWindowStart = strings.TrimSpace(plan.UsageWindowStart)
+	plan.UsageWindowEnd = strings.TrimSpace(plan.UsageWindowEnd)
+	plan.UsageWindowTimezone = strings.TrimSpace(plan.UsageWindowTimezone)
+	if plan.UsageWindowTimezone == "" {
+		plan.UsageWindowTimezone = "UTC"
+	}
+	return plan.ValidateUsageWindow()
+}
+
 func AdminCreateSubscriptionPlan(c *gin.Context) {
 	if !requirePaymentCompliance(c) {
 		return
@@ -176,6 +189,10 @@ func AdminCreateSubscriptionPlan(c *gin.Context) {
 	}
 	if req.Plan.DurationValue <= 0 && req.Plan.DurationUnit != model.SubscriptionDurationCustom {
 		req.Plan.DurationValue = 1
+	}
+	if err := normalizeSubscriptionPlanUsageWindow(&req.Plan); err != nil {
+		common.ApiErrorMsg(c, "使用时间段配置无效: "+err.Error())
+		return
 	}
 	if req.Plan.MaxPurchasePerUser < 0 {
 		common.ApiErrorMsg(c, "购买上限不能为负数")
@@ -251,6 +268,10 @@ func AdminUpdateSubscriptionPlan(c *gin.Context) {
 	if req.Plan.DurationValue <= 0 && req.Plan.DurationUnit != model.SubscriptionDurationCustom {
 		req.Plan.DurationValue = 1
 	}
+	if err := normalizeSubscriptionPlanUsageWindow(&req.Plan); err != nil {
+		common.ApiErrorMsg(c, "使用时间段配置无效: "+err.Error())
+		return
+	}
 	if req.Plan.MaxPurchasePerUser < 0 {
 		common.ApiErrorMsg(c, "购买上限不能为负数")
 		return
@@ -300,6 +321,9 @@ func AdminUpdateSubscriptionPlan(c *gin.Context) {
 			"downgrade_group":            req.Plan.DowngradeGroup,
 			"quota_reset_period":         req.Plan.QuotaResetPeriod,
 			"quota_reset_custom_seconds": req.Plan.QuotaResetCustomSeconds,
+			"usage_window_start":         req.Plan.UsageWindowStart,
+			"usage_window_end":           req.Plan.UsageWindowEnd,
+			"usage_window_timezone":      req.Plan.UsageWindowTimezone,
 			"updated_at":                 common.GetTimestamp(),
 		}
 		if req.Plan.AllowBalancePay != nil {

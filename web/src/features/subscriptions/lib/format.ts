@@ -62,6 +62,16 @@ export function formatResetPeriod(
   return t('No Reset')
 }
 
+export function formatUsageWindow(
+  plan: Partial<SubscriptionPlan>,
+  t: TFunction
+): string {
+  const start = plan.usage_window_start?.trim()
+  const end = plan.usage_window_end?.trim()
+  if (!start || !end) return t('All day')
+  return `${start}-${end} (${plan.usage_window_timezone || 'UTC'})`
+}
+
 export function formatTimestamp(ts: number): string {
   if (!ts) return '-'
   return dayjs(ts * 1000).format('YYYY-MM-DD HH:mm:ss')
