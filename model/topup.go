@@ -3,9 +3,11 @@ package model
 import (
 	"errors"
 	"fmt"
+	"math"
 
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/logger"
+	"github.com/QuantumNous/new-api/setting/operation_setting"
 
 	"github.com/shopspring/decimal"
 	"gorm.io/gorm"
@@ -132,7 +134,7 @@ func creditTopUpQuota(tx *gorm.DB, userId int, creditedQuota int, updates map[st
 		return result.Error
 	}
 	if result.RowsAffected == 1 {
-		return nil
+		return creditInviterReward(tx, userId, creditedQuota)
 	}
 
 	var count int64
@@ -143,6 +145,50 @@ func creditTopUpQuota(tx *gorm.DB, userId int, creditedQuota int, updates map[st
 		return gorm.ErrRecordNotFound
 	}
 	return ErrTopUpQuotaLimitExceeded
+}
+
+// creditInviterReward credits a percentage of a successful invitee top-up to
+// the inviter. It runs in the same transaction as the wallet credit, so a
+// failed reward cannot leave the top-up partially settled and duplicate
+// callbacks cannot award the same order twice.
+func creditInviterReward(tx *gorm.DB, inviteeId int, creditedQuota int) error {
+	ratio := common.InviteRewardRatio
+	if ratio <= 0 || ratio > 1 || math.IsNaN(ratio) || math.IsInf(ratio, 0) || !operation_setting.IsPaymentComplianceConfirmed() {
+		return nil
+	}
+	var invitee User
+	if err := tx.Select("inviter_id").First(&invitee, inviteeId).Error; err != nil {
+		return err
+	}
+	if invitee.InviterId <= 0 || invitee.InviterId == inviteeId {
+		return nil
+	}
+	reward, err := common.QuotaFromDecimalStrict(
+		decimal.NewFromInt(int64(creditedQuota)).Mul(decimal.NewFromFloat(ratio)),
+	)
+	if err != nil {
+		return err
+	}
+	if reward <= 0 {
+		return nil
+	}
+	result := tx.Model(&User{}).Where("id = ?", invitee.InviterId).Updates(map[string]interface{}{
+		"aff_quota":   gorm.Expr("aff_quota + ?", reward),
+		"aff_history": gorm.Expr("aff_history + ?", reward),
+	})
+	if result.Error != nil {
+		return result.Error
+	}
+	if result.RowsAffected == 0 {
+		return gorm.ErrRecordNotFound
+	}
+	// The affiliate balance is not maintained by the quota cache delta path.
+	// Drop a potentially stale snapshot; the next read will hydrate it from the
+	// committed database row.
+	if err := invalidateUserCache(invitee.InviterId); err != nil {
+		common.SysLog("failed to invalidate inviter cache after recharge reward: " + err.Error())
+	}
+	return nil
 }
 
 func (topUp *TopUp) Update() error {
