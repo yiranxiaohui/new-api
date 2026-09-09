@@ -124,8 +124,15 @@ var TelegramBotToken = ""
 var TelegramBotName = ""
 
 var QuotaForNewUser = 0
+
+// QuotaForInviter is retained for settings compatibility; referral rewards
+// are now calculated from InviteRewardRatio after an invitee recharge.
 var QuotaForInviter = 0
 var QuotaForInvitee = 0
+
+// InviteRewardRatio is the fraction of an invitee's successful top-up quota
+// credited to their inviter (for example, 0.1 means 10%).
+var InviteRewardRatio = 0.0
 var ChannelDisableThreshold = 5.0
 var AutomaticDisableChannelEnabled = false
 var AutomaticEnableChannelEnabled = false
