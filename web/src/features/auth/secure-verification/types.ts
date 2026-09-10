@@ -25,6 +25,9 @@ export type VerificationMethod =
   | 'oauth'
   | 'session'
 export type SecurityProofScope =
+  | 'withdrawal.create'
+  | 'withdrawal.review'
+  | 'withdrawal.configure'
   | 'channel.key.read'
   | 'passkey.register'
   | 'passkey.delete'
@@ -40,6 +43,18 @@ export type SecurityProofScope =
   | 'account.delete'
 
 export type VerificationOperation =
+  | {
+      scope: 'withdrawal.create'
+      context: {
+        id: string
+        amount_cents: number
+        quota: number
+        payee_account: string
+        payee_name: string
+      }
+    }
+  | { scope: 'withdrawal.review'; context: { id: string; approve: boolean } }
+  | { scope: 'withdrawal.configure'; context: { digest: string } }
   | { scope: 'channel.key.read'; context: { channel_id: number } }
   | {
       scope: 'account.binding.bind'
@@ -49,7 +64,12 @@ export type VerificationOperation =
   | {
       scope: Exclude<
         SecurityProofScope,
-        'channel.key.read' | 'account.binding.bind' | 'account.binding.unbind'
+        | 'channel.key.read'
+        | 'account.binding.bind'
+        | 'account.binding.unbind'
+        | 'withdrawal.create'
+        | 'withdrawal.review'
+        | 'withdrawal.configure'
       >
       context?: Record<string, never>
     }

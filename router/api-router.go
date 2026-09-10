@@ -84,6 +84,7 @@ func SetApiRouter(router *gin.Engine) {
 			userRoute.POST("/passkey/login/begin", middleware.CriticalRateLimit(), middleware.DisableCache(), anonymousRequestBodyLimit, controller.PasskeyLoginBegin)
 			userRoute.POST("/passkey/login/finish", middleware.CriticalRateLimit(), middleware.DisableCache(), anonymousRequestBodyLimit, controller.PasskeyLoginFinish)
 			//userRoute.POST("/tokenlog", middleware.CriticalRateLimit(), controller.TokenLog)
+			userRoute.POST("/withdrawals/notify", anonymousRequestBodyLimit, controller.WithdrawalNotify)
 			userRoute.POST("/epay/notify", anonymousRequestBodyLimit, controller.EpayNotify)
 			userRoute.GET("/epay/notify", controller.EpayNotify)
 			userRoute.GET("/groups", controller.GetUserGroups)
@@ -122,6 +123,10 @@ func SetApiRouter(router *gin.Engine) {
 				selfRoute.POST("/waffo/pay", middleware.CriticalRateLimit(), controller.RequestWaffoPay)
 				selfRoute.POST("/waffo-pancake/amount", controller.RequestWaffoPancakeAmount)
 				selfRoute.POST("/waffo-pancake/pay", middleware.CriticalRateLimit(), controller.RequestWaffoPancakePay)
+				selfRoute.GET("/withdrawals/policy", controller.GetWithdrawalPolicy)
+				selfRoute.GET("/withdrawals/quote", controller.QuoteWithdrawal)
+				selfRoute.GET("/withdrawals", controller.GetWithdrawals)
+				selfRoute.POST("/withdrawals", middleware.UserCriticalRateLimit("withdrawal"), controller.CreateWithdrawal)
 				selfRoute.POST("/aff_transfer", middleware.UserCriticalRateLimit("aff-transfer"), controller.TransferAffQuota)
 				selfRoute.PUT("/setting", controller.UpdateUserSetting)
 
@@ -147,6 +152,13 @@ func SetApiRouter(router *gin.Engine) {
 				selfRoute.GET("/oauth/bindings", controller.GetUserOAuthBindings)
 				selfRoute.DELETE("/oauth/bindings/:provider_id", controller.UnbindCustomOAuth)
 			}
+
+			withdrawalAdmin := userRoute.Group("/withdrawals/admin")
+			withdrawalAdmin.Use(middleware.RootAuth(), middleware.DisableCache())
+			withdrawalAdmin.GET("/config", controller.GetWithdrawalConfig)
+			withdrawalAdmin.PUT("/config", middleware.UserCriticalRateLimit("withdrawal-settings"), controller.PutWithdrawalConfig)
+			withdrawalAdmin.GET("/", func(c *gin.Context) { c.Set("withdrawal_admin", true); controller.GetWithdrawals(c) })
+			withdrawalAdmin.POST("/review", middleware.UserCriticalRateLimit("withdrawal-review"), controller.ReviewWithdrawal)
 
 			adminRoute := userRoute.Group("/")
 			adminRoute.Use(middleware.AdminAuth())

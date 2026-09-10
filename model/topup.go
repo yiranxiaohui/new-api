@@ -134,7 +134,7 @@ func creditTopUpQuota(tx *gorm.DB, userId int, creditedQuota int, updates map[st
 		return result.Error
 	}
 	if result.RowsAffected == 1 {
-		return creditInviterReward(tx, userId, creditedQuota)
+		return nil
 	}
 
 	var count int64
@@ -163,7 +163,7 @@ func creditInviterReward(tx *gorm.DB, inviteeId int, creditedQuota int) error {
 	if invitee.InviterId <= 0 || invitee.InviterId == inviteeId {
 		return nil
 	}
-	reward, err := common.QuotaFromDecimalStrict(
+	reward, err := common.WalletQuotaFromDecimalStrict(
 		decimal.NewFromInt(int64(creditedQuota)).Mul(decimal.NewFromFloat(ratio)),
 	)
 	if err != nil {
@@ -172,7 +172,7 @@ func creditInviterReward(tx *gorm.DB, inviteeId int, creditedQuota int) error {
 	if reward <= 0 {
 		return nil
 	}
-	result := tx.Model(&User{}).Where("id = ?", invitee.InviterId).Updates(map[string]interface{}{
+	result := tx.Model(&User{}).Where("id = ? AND aff_quota <= ? AND aff_history <= ?", invitee.InviterId, common.MaxWalletQuota-reward, common.MaxWalletQuota-reward).Updates(map[string]interface{}{
 		"aff_quota":   gorm.Expr("aff_quota + ?", reward),
 		"aff_history": gorm.Expr("aff_history + ?", reward),
 	})
@@ -180,15 +180,23 @@ func creditInviterReward(tx *gorm.DB, inviteeId int, creditedQuota int) error {
 		return result.Error
 	}
 	if result.RowsAffected == 0 {
-		return gorm.ErrRecordNotFound
-	}
-	// The affiliate balance is not maintained by the quota cache delta path.
-	// Drop a potentially stale snapshot; the next read will hydrate it from the
-	// committed database row.
-	if err := invalidateUserCache(invitee.InviterId); err != nil {
-		common.SysLog("failed to invalidate inviter cache after recharge reward: " + err.Error())
+		var count int64
+		if err := tx.Model(&User{}).Where("id = ?", invitee.InviterId).Count(&count).Error; err != nil {
+			return err
+		}
+		if count > 0 {
+			return ErrWalletQuotaLimitExceeded
+		}
 	}
 	return nil
+}
+
+// Paid top-ups award referral quota. Redemption codes only credit the wallet.
+func creditPaidTopUpQuota(tx *gorm.DB, userID, quota int, updates map[string]interface{}) error {
+	if err := creditTopUpQuota(tx, userID, quota, updates); err != nil {
+		return err
+	}
+	return creditInviterReward(tx, userID, quota)
 }
 
 func (topUp *TopUp) Update() error {
@@ -289,7 +297,7 @@ func RechargeEpay(tradeNo string, actualPaymentMethod string, callerIp string) (
 		if err := tx.Save(topUp).Error; err != nil {
 			return err
 		}
-		return creditTopUpQuota(tx, topUp.UserId, quotaToAdd, nil)
+		return creditPaidTopUpQuota(tx, topUp.UserId, quotaToAdd, nil)
 	})
 	if err != nil {
 		if !errors.Is(err, ErrTopUpNotFound) && !errors.Is(err, ErrPaymentMethodMismatch) && !errors.Is(err, ErrTopUpStatusInvalid) {
@@ -347,7 +355,7 @@ func Recharge(referenceId string, customerId string, callerIp string) (err error
 		if err != nil || quota <= 0 {
 			return ErrInvalidTopUpQuota
 		}
-		return creditTopUpQuota(tx, topUp.UserId, quota, map[string]interface{}{
+		return creditPaidTopUpQuota(tx, topUp.UserId, quota, map[string]interface{}{
 			"stripe_customer": customerId,
 		})
 	})
@@ -587,7 +595,7 @@ func ManualCompleteTopUp(tradeNo string, callerIp string) error {
 		}
 
 		// 增加用户额度（立即写库，保持一致性）
-		if err := creditTopUpQuota(tx, topUp.UserId, quotaToAdd, nil); err != nil {
+		if err := creditPaidTopUpQuota(tx, topUp.UserId, quotaToAdd, nil); err != nil {
 			return err
 		}
 
@@ -664,7 +672,7 @@ func RechargeCreem(referenceId string, customerEmail string, customerName string
 			}
 		}
 
-		return creditTopUpQuota(tx, topUp.UserId, quota, updateFields)
+		return creditPaidTopUpQuota(tx, topUp.UserId, quota, updateFields)
 	})
 
 	if err != nil {
@@ -722,7 +730,7 @@ func RechargeWaffo(tradeNo string, callerIp string) (err error) {
 			return err
 		}
 
-		return creditTopUpQuota(tx, topUp.UserId, quotaToAdd, nil)
+		return creditPaidTopUpQuota(tx, topUp.UserId, quotaToAdd, nil)
 	})
 
 	if err != nil {
@@ -782,7 +790,7 @@ func RechargeWaffoPancake(tradeNo string) (err error) {
 			return err
 		}
 
-		return creditTopUpQuota(tx, topUp.UserId, quotaToAdd, nil)
+		return creditPaidTopUpQuota(tx, topUp.UserId, quotaToAdd, nil)
 	})
 
 	if err != nil {

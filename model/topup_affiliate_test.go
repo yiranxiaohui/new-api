@@ -30,7 +30,7 @@ func TestCreditTopUpQuotaCreditsConfiguredInviterRatio(t *testing.T) {
 	require.NoError(t, DB.Create(invitee).Error)
 
 	require.NoError(t, DB.Transaction(func(tx *gorm.DB) error {
-		return creditTopUpQuota(tx, invitee.Id, 1000, nil)
+		return creditPaidTopUpQuota(tx, invitee.Id, 1000, nil)
 	}))
 
 	var got User
@@ -40,6 +40,15 @@ func TestCreditTopUpQuotaCreditsConfiguredInviterRatio(t *testing.T) {
 	var gotInvitee User
 	require.NoError(t, DB.First(&gotInvitee, invitee.Id).Error)
 	assert.Equal(t, 1000, gotInvitee.Quota)
+	// Redemption uses the wallet-only path and must never generate withdrawable rewards.
+	require.NoError(t, DB.Transaction(func(tx *gorm.DB) error { return creditTopUpQuota(tx, invitee.Id, 1000, nil) }))
+	require.NoError(t, DB.First(&got, inviter.Id).Error)
+	assert.Equal(t, 100, got.AffQuota)
+	require.NoError(t, DB.Model(inviter).Updates(map[string]any{"aff_quota": common.MaxWalletQuota, "aff_history": common.MaxWalletQuota}).Error)
+	err := DB.Transaction(func(tx *gorm.DB) error { return creditPaidTopUpQuota(tx, invitee.Id, 1000, nil) })
+	require.ErrorIs(t, err, ErrWalletQuotaLimitExceeded)
+	require.NoError(t, DB.First(&gotInvitee, invitee.Id).Error)
+	assert.Equal(t, 2000, gotInvitee.Quota, "reward overflow rolls back the recharge")
 }
 
 func TestCreditTopUpQuotaDoesNotRewardWithoutInviterOrRatio(t *testing.T) {
@@ -50,7 +59,7 @@ func TestCreditTopUpQuotaDoesNotRewardWithoutInviterOrRatio(t *testing.T) {
 	invitee := &User{Username: "invitee-no-reward", Password: "x", Status: common.UserStatusEnabled}
 	require.NoError(t, DB.Create(invitee).Error)
 	require.NoError(t, DB.Transaction(func(tx *gorm.DB) error {
-		return creditTopUpQuota(tx, invitee.Id, 1000, nil)
+		return creditPaidTopUpQuota(tx, invitee.Id, 1000, nil)
 	}))
 	var got User
 	require.NoError(t, DB.First(&got, invitee.Id).Error)

@@ -20,6 +20,7 @@ import { useState, useEffect, useCallback, useMemo, useRef } from 'react'
 import { useTranslation } from 'react-i18next'
 
 import { SectionPageLayout } from '@/components/layout'
+import { WithdrawalCard } from '@/features/affiliate-withdrawals/withdrawal-card'
 import { useStatus } from '@/hooks/use-status'
 import { useSystemConfig } from '@/hooks/use-system-config'
 import { getSelf } from '@/lib/api'
@@ -348,6 +349,11 @@ export function Wallet(props: WalletProps) {
                 topupInfo?.payment_compliance_confirmed !== false
               }
               loading={affiliateLoading}
+            />
+
+            <WithdrawalCard
+              availableQuota={user?.aff_quota ?? 0}
+              onUpdate={fetchUser}
             />
 
             <InvoiceCard />

@@ -16,6 +16,7 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
+import { WithdrawalSettings } from '@/features/affiliate-withdrawals/withdrawal-settings'
 import { parseCurrencyDisplayType } from '@/lib/currency'
 
 import { CheckinSettingsSection } from '../general/checkin-settings-section'
@@ -53,6 +54,11 @@ const getGroupDefaults = (settings: BillingSettings) => ({
 })
 
 const BILLING_SECTIONS = [
+  {
+    id: 'withdrawals',
+    titleKey: 'Referral withdrawals',
+    build: () => <WithdrawalSettings />,
+  },
   {
     id: 'quota',
     titleKey: 'Quota Settings',

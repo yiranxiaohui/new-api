@@ -10,6 +10,7 @@ import (
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/model"
 	"github.com/QuantumNous/new-api/oauth"
+	"github.com/QuantumNous/new-api/pkg/unipay"
 	"github.com/QuantumNous/new-api/setting/system_setting"
 	"gorm.io/gorm"
 )
@@ -82,6 +83,24 @@ func BindVerificationOperation(operation VerificationOperation) (VerificationBin
 	}
 	var normalized any
 	switch operation.Scope {
+	case VerificationScopeWithdrawalCreate:
+		var context model.WithdrawalRequest
+		if len(fields) != 5 || common.Unmarshal(operation.Context, &context) != nil || !unipay.Identifier.MatchString(context.ID) || context.AmountCents <= 0 || context.AmountCents > unipay.MaxAmountCents || context.Quota <= 0 || context.Quota > common.MaxWalletQuota || !unipay.ValidText(context.PayeeAccount, 100) || !unipay.ValidText(context.PayeeName, 100) {
+			return VerificationBinding{}, ErrVerificationContextInvalid
+		}
+		normalized = context
+	case VerificationScopeWithdrawalReview:
+		var context WithdrawalReviewContext
+		if len(fields) != 2 || common.Unmarshal(operation.Context, &context) != nil || !unipay.Identifier.MatchString(context.ID) || string(fields["approve"]) != "true" && string(fields["approve"]) != "false" {
+			return VerificationBinding{}, ErrVerificationContextInvalid
+		}
+		normalized = context
+	case VerificationScopeWithdrawalConfigure:
+		var context WithdrawalConfigContext
+		if len(fields) != 1 || common.Unmarshal(operation.Context, &context) != nil || !unipay.KeyPattern.MatchString(context.Digest) {
+			return VerificationBinding{}, ErrVerificationContextInvalid
+		}
+		normalized = context
 	case VerificationScopeChannelKeyRead:
 		var context ChannelKeyReadContext
 		if len(fields) != 1 || common.Unmarshal(fields["channel_id"], &context.ChannelID) != nil || context.ChannelID <= 0 {
@@ -178,7 +197,8 @@ func securityVerificationPolicy(scope string, state model.UserVerificationState)
 		methods = append(methods, VerificationMethodPasskey)
 	}
 	switch scope {
-	case VerificationScopeChannelKeyRead, VerificationScopePasskeyDelete, VerificationScopeLogin:
+	case VerificationScopeChannelKeyRead, VerificationScopePasskeyDelete, VerificationScopeLogin,
+		VerificationScopeWithdrawalCreate, VerificationScopeWithdrawalReview, VerificationScopeWithdrawalConfigure:
 	case VerificationScopeTwoFADisable, VerificationScopeTwoFABackupCodes:
 		if !state.HasTwoFA {
 			return nil, model.ErrTwoFANotEnabled
@@ -231,7 +251,7 @@ func GetVerificationRequirements(identity AuthIdentity, scope string) (*Verifica
 	if state.Status != common.UserStatusEnabled || state.AuthVersion != identity.UserAuthVersion {
 		return nil, ErrAuthTokenInvalid
 	}
-	if scope == VerificationScopeChannelKeyRead && state.Role != common.RoleRootUser {
+	if (scope == VerificationScopeChannelKeyRead || scope == VerificationScopeWithdrawalReview || scope == VerificationScopeWithdrawalConfigure) && state.Role != common.RoleRootUser {
 		return nil, ErrVerificationForbidden
 	}
 	methods, err := securityVerificationPolicy(scope, *state)
