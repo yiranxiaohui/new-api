@@ -16,10 +16,11 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
-import { useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { Download, Upload } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
+
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Label } from '@/components/ui/label'
@@ -38,6 +39,7 @@ import {
   TableRow,
 } from '@/components/ui/table'
 import { Textarea } from '@/components/ui/textarea'
+
 import {
   downloadInvoiceFileAdmin,
   getInvoice,
@@ -68,27 +70,46 @@ export function InvoiceDetailDrawer({
   const [actionLoading, setActionLoading] = useState(false)
   const fileInputRef = useRef<HTMLInputElement>(null)
 
-  // Load invoice detail when drawer opens
-  const handleOpenChange = async (newOpen: boolean) => {
-    onOpenChange(newOpen)
-    if (newOpen && invoiceId != null) {
-      setLoading(true)
-      setRejectReason('')
+  useEffect(() => {
+    if (!open || invoiceId == null) {
+      setInvoice(null)
+      setLoading(false)
+      return
+    }
+
+    let cancelled = false
+    setLoading(true)
+    setInvoice(null)
+    setRejectReason('')
+
+    const loadInvoice = async () => {
       try {
         const res = await getInvoice(invoiceId)
+        if (cancelled) return
         if (res.success && res.data) {
           setInvoice(res.data)
         } else {
           toast.error(res.message ?? t('Failed to load invoice'))
         }
       } catch {
-        toast.error(t('Failed to load invoice'))
+        if (!cancelled) {
+          toast.error(t('Failed to load invoice'))
+        }
       } finally {
-        setLoading(false)
+        if (!cancelled) {
+          setLoading(false)
+        }
       }
-    } else if (!newOpen) {
-      setInvoice(null)
     }
+
+    void loadInvoice()
+    return () => {
+      cancelled = true
+    }
+  }, [invoiceId, open, t])
+
+  const handleOpenChange = (newOpen: boolean) => {
+    onOpenChange(newOpen)
   }
 
   const handleFileUpload = async (file: File) => {
@@ -232,9 +253,7 @@ export function InvoiceDetailDrawer({
 
                 <div className='text-muted-foreground'>{t('Title Type')}</div>
                 <div>
-                  {invoice.title_type === 1
-                    ? t('Personal')
-                    : t('Enterprise')}
+                  {invoice.title_type === 1 ? t('Personal') : t('Enterprise')}
                 </div>
 
                 <div className='text-muted-foreground'>{t('Title Name')}</div>
@@ -253,9 +272,7 @@ export function InvoiceDetailDrawer({
                 <div>{invoice.email}</div>
 
                 <div className='text-muted-foreground'>{t('Amount')}</div>
-                <div className='font-medium'>
-                  ${invoice.money.toFixed(2)}
-                </div>
+                <div className='font-medium'>${invoice.money.toFixed(2)}</div>
               </div>
             </div>
 
@@ -282,18 +299,14 @@ export function InvoiceDetailDrawer({
             {/* Related Orders */}
             {invoice.orders && invoice.orders.length > 0 && (
               <div className='space-y-2'>
-                <h3 className='text-sm font-semibold'>
-                  {t('Related Orders')}
-                </h3>
+                <h3 className='text-sm font-semibold'>{t('Related Orders')}</h3>
                 <Table>
                   <TableHeader>
                     <TableRow>
                       <TableHead className='text-xs'>
                         {t('Order Type')}
                       </TableHead>
-                      <TableHead className='text-xs'>
-                        {t('Trade No')}
-                      </TableHead>
+                      <TableHead className='text-xs'>{t('Trade No')}</TableHead>
                       <TableHead className='text-right text-xs'>
                         {t('Amount')}
                       </TableHead>
