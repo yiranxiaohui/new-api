@@ -12,7 +12,6 @@ import (
 	"github.com/QuantumNous/new-api/relaykit/types"
 	"github.com/QuantumNous/new-api/setting/operation_setting"
 
-	"github.com/bytedance/gopkg/util/gopool"
 	"github.com/gin-gonic/gin"
 )
 
@@ -59,9 +58,10 @@ func ProcessChannelError(c *gin.Context, channelError types.ChannelError, err *t
 	}
 	logger.LogError(c, fmt.Sprintf("channel error (channel #%d, status code: %d): %s", channelError.ChannelId, err.StatusCode, common.LocalLogPreview(err.MaskSensitiveErrorWithStatusCode())))
 	if ShouldDisableChannel(err) && channelError.AutoBan {
-		gopool.Go(func() {
-			DisableChannel(channelError, err.ErrorWithStatusCode())
-		})
+		// Disable the channel before deciding whether to retry. Channel selection
+		// reads the in-memory enabled-channel index, so doing this asynchronously
+		// could select the failed channel again on the very next attempt.
+		DisableChannel(channelError, err.ErrorWithStatusCode())
 	}
 
 	if constant.ErrorLogEnabled && types.IsRecordErrorLog(err) {
