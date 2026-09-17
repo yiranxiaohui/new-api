@@ -162,9 +162,14 @@ export function ApiKeysMutateDrawer({
         label: key,
         desc: info.desc || key,
         ratio: info.ratio,
+        baseRatio: info.base_ratio,
       })),
     [groupsData]
   )
+  const userRatio =
+    typeof groupsData?.user_ratio === 'number' && groupsData.user_ratio > 0
+      ? groupsData.user_ratio
+      : 1
   const backendHasAuto = groups.some((g) => g.value === 'auto')
   const availableAutoGroupNames = useMemo(
     () => groups.filter((group) => group.value !== 'auto').map((g) => g.value),
@@ -422,6 +427,7 @@ export function ApiKeysMutateDrawer({
                       <ApiKeyGroupCombobox
                         options={groups}
                         value={field.value}
+                        userRatio={userRatio}
                         onValueChange={(group) => {
                           field.onChange(group)
                           if (group === 'auto') {
@@ -437,6 +443,14 @@ export function ApiKeysMutateDrawer({
                         placeholder={t('Select a group')}
                       />
                     </FormControl>
+                    {userRatio !== 1 && (
+                      <FormDescription>
+                        {t(
+                          'Ratios shown already include your user ratio {{user}}x.',
+                          { user: userRatio }
+                        )}
+                      </FormDescription>
+                    )}
                     <FormMessage />
                   </FormItem>
                 )}

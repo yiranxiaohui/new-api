@@ -53,24 +53,42 @@ function getQuotaProgressColor(percentage: number): string {
   return '[&_[data-slot=progress-indicator]]:bg-emerald-500'
 }
 
-function useGroupRatios(): Record<string, number | string> {
+type GroupRatioInfo = {
+  ratios: Record<string, number | string>
+  baseRatios: Record<string, number>
+  userRatio: number
+}
+
+function useGroupRatios(): GroupRatioInfo {
   const { data } = useQuery({
     queryKey: ['user-groups'],
     queryFn: getUserGroups,
     staleTime: 0,
-    select: (res) => {
-      if (!res.success || !res.data) return {}
+    select: (res): GroupRatioInfo => {
+      const empty = { ratios: {}, baseRatios: {}, userRatio: 1 }
+      if (!res.success || !res.data) return empty
       const ratios: Record<string, number | string> = {}
+      const baseRatios: Record<string, number> = {}
       for (const [group, info] of Object.entries(res.data)) {
         if (typeof info.ratio === 'number' || typeof info.ratio === 'string') {
           ratios[group] = info.ratio
         }
+        if (typeof info.base_ratio === 'number') {
+          baseRatios[group] = info.base_ratio
+        }
       }
-      return ratios
+      return {
+        ratios,
+        baseRatios,
+        userRatio:
+          typeof res.user_ratio === 'number' && res.user_ratio > 0
+            ? res.user_ratio
+            : 1,
+      }
     },
   })
 
-  return data ?? {}
+  return data ?? { ratios: {}, baseRatios: {}, userRatio: 1 }
 }
 
 export function useApiKeysColumns(now: number): ColumnDef<ApiKey>[] {
@@ -199,7 +217,9 @@ export function useApiKeysColumns(now: number): ColumnDef<ApiKey>[] {
         return (
           <ApiKeyGroupCell
             group={group}
-            ratio={groupRatios[group]}
+            ratio={groupRatios.ratios[group]}
+            baseRatio={groupRatios.baseRatios[group]}
+            userRatio={groupRatios.userRatio}
             crossGroupRetry={apiKey.cross_group_retry}
             shouldReduceMotion={shouldReduceMotion}
           />

@@ -1,6 +1,7 @@
 package service
 
 import (
+	"math"
 	"strings"
 
 	"github.com/QuantumNous/new-api/common"
@@ -135,4 +136,15 @@ func GetUserGroupRatio(userGroup, group string) float64 {
 		return ratio
 	}
 	return ratio_setting.GetGroupRatio(group)
+}
+
+// ApplyUserRatio 将用户专属倍率叠加到分组倍率上，与计费路径
+// helper.HandleGroupRatio 的叠加方式保持一致，供展示端复用。
+// userRatio 为归一化后的用户倍率（未设置时为 1）。
+func ApplyUserRatio(groupRatio float64, userRatio float64) float64 {
+	if userRatio <= 0 || userRatio == 1 {
+		return groupRatio
+	}
+	// 浮点乘积会产生 1.2000000000000002 之类的尾数，展示前按 6 位小数收敛。
+	return math.Round(groupRatio*userRatio*1e6) / 1e6
 }

@@ -37,14 +37,43 @@ type ApiKeyGroupCellProps = {
   crossGroupRetry: boolean
   group: string
   ratio?: GroupRatio
+  baseRatio?: number
+  userRatio?: number
   shouldReduceMotion: boolean
 }
 
 export function ApiKeyGroupCell(props: ApiKeyGroupCellProps) {
   const { t } = useTranslation()
+  const hasUserRatio =
+    typeof props.userRatio === 'number' &&
+    props.userRatio > 0 &&
+    props.userRatio !== 1
 
   if (props.group !== 'auto') {
     const ratio = typeof props.ratio === 'number' ? props.ratio : undefined
+    if (hasUserRatio && ratio !== undefined) {
+      return (
+        <TruncatedCell
+          className='-ml-1.5'
+          tooltipContent={
+            typeof props.baseRatio === 'number'
+              ? t(
+                  'Group ratio {{group}}x × your user ratio {{user}}x = {{effective}}x',
+                  {
+                    group: props.baseRatio,
+                    user: props.userRatio,
+                    effective: ratio,
+                  }
+                )
+              : t('Includes your user ratio {{user}}x', {
+                  user: props.userRatio,
+                })
+          }
+        >
+          <GroupBadge group={props.group} ratio={ratio} />
+        </TruncatedCell>
+      )
+    }
     return (
       <TruncatedCell
         className='-ml-1.5'
@@ -74,6 +103,8 @@ export function ApiKeyGroupCell(props: ApiKeyGroupCellProps) {
         {/*<AutoGroupBadge shouldReduceMotion={props.shouldReduceMotion} />*/}
         <GroupRatioBadge
           ratio={props.ratio}
+          baseRatio={props.baseRatio}
+          userRatio={props.userRatio}
           isAuto
           shouldReduceMotion={props.shouldReduceMotion}
         />

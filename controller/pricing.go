@@ -53,6 +53,10 @@ func GetPricing(c *gin.Context) {
 					groupRatio[g] = ratio
 				}
 			}
+			// 展示的分组倍率需要叠加用户专属倍率，否则与实际计费不一致。
+			for g, ratio := range groupRatio {
+				groupRatio[g] = service.ApplyUserRatio(ratio, user.GetRatio())
+			}
 		}
 	}
 

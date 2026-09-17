@@ -48,6 +48,7 @@ export type ApiKeyGroupOption = {
   label: string
   desc?: string
   ratio?: number | string
+  baseRatio?: number
 }
 
 type ApiKeyGroupComboboxProps = {
@@ -56,6 +57,8 @@ type ApiKeyGroupComboboxProps = {
   onValueChange: (value: string) => void
   placeholder?: string
   disabled?: boolean
+  /** Per-user billing ratio already multiplied into every option ratio. */
+  userRatio?: number
 }
 
 export function ApiKeyGroupCombobox({
@@ -64,6 +67,7 @@ export function ApiKeyGroupCombobox({
   onValueChange,
   placeholder,
   disabled,
+  userRatio,
 }: ApiKeyGroupComboboxProps) {
   const { t } = useTranslation()
   const [open, setOpen] = useState(false)
@@ -132,6 +136,8 @@ export function ApiKeyGroupCombobox({
           <span className='hidden sm:block'>
             <GroupRatioBadge
               ratio={selectedOption?.ratio}
+              baseRatio={selectedOption?.baseRatio}
+              userRatio={userRatio}
               isAuto={isAutoSelected}
               shouldReduceMotion={shouldReduceMotion}
             />
@@ -199,6 +205,8 @@ export function ApiKeyGroupCombobox({
                     </span>
                     <GroupRatioBadge
                       ratio={option.ratio}
+                      baseRatio={option.baseRatio}
+                      userRatio={userRatio}
                       isAuto={isAutoOption}
                       shouldReduceMotion={shouldReduceMotion}
                     />
