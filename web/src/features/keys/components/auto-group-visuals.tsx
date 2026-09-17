@@ -21,6 +21,11 @@ import { useTranslation } from 'react-i18next'
 
 import { GroupBadge } from '@/components/group-badge'
 import { Badge } from '@/components/ui/badge'
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from '@/components/ui/tooltip'
 import { cn } from '@/lib/utils'
 
 export type GroupRatio = number | string | null | undefined
@@ -87,6 +92,10 @@ function getRatioBadgeClassName(ratio: GroupRatio, isAuto: boolean): string {
 type GroupRatioBadgeProps = {
   isAuto?: boolean
   ratio: GroupRatio
+  /** Group ratio before the per-user ratio is applied. */
+  baseRatio?: number
+  /** Per-user billing ratio; values other than 1 are explained in a tooltip. */
+  userRatio?: number
   shouldReduceMotion?: boolean
 }
 
@@ -113,8 +122,36 @@ export function GroupRatioBadge(props: GroupRatioBadgeProps) {
     </Badge>
   )
 
+  const showUserRatio =
+    typeof props.userRatio === 'number' &&
+    props.userRatio > 0 &&
+    props.userRatio !== 1
+  const explainedBadge = showUserRatio ? (
+    <Tooltip>
+      <TooltipTrigger render={<span className='inline-flex max-w-full' />}>
+        {badge}
+      </TooltipTrigger>
+      <TooltipContent className='text-xs'>
+        {typeof props.baseRatio === 'number' && typeof props.ratio === 'number'
+          ? t(
+              'Group ratio {{group}}x × your user ratio {{user}}x = {{effective}}x',
+              {
+                group: props.baseRatio,
+                user: props.userRatio,
+                effective: props.ratio,
+              }
+            )
+          : t('Includes your user ratio {{user}}x', { user: props.userRatio })}
+      </TooltipContent>
+    </Tooltip>
+  ) : (
+    badge
+  )
+
   if (!props.isAuto) {
-    return <span className='max-w-24 shrink-0 sm:max-w-none'>{badge}</span>
+    return (
+      <span className='max-w-24 shrink-0 sm:max-w-none'>{explainedBadge}</span>
+    )
   }
 
   return (
@@ -123,7 +160,7 @@ export function GroupRatioBadge(props: GroupRatioBadgeProps) {
       shouldReduceMotion={props.shouldReduceMotion ?? false}
       className='max-w-24 sm:max-w-none'
     >
-      {badge}
+      {explainedBadge}
     </AutoGroupFrame>
   )
 }

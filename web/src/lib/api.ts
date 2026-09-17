@@ -59,7 +59,12 @@ export async function getUserModels(): Promise<{
 export async function getUserGroups(): Promise<{
   success: boolean
   message?: string
-  data?: Record<string, { desc: string; ratio: number | string }>
+  data?: Record<
+    string,
+    { desc: string; ratio: number | string; base_ratio?: number }
+  >
+  /** Per-user billing ratio already multiplied into each group ratio above. */
+  user_ratio?: number
 }> {
   const res = await api.get('/api/user/self/groups')
   return res.data
