@@ -24,7 +24,7 @@ func GetGroups(c *gin.Context) {
 }
 
 func GetUserGroups(c *gin.Context) {
-	usableGroups := make(map[string]map[string]interface{})
+	usableGroups := make(map[string]map[string]any)
 	userGroup := ""
 	userRatio := 1.0
 	userId := c.GetInt("id")
@@ -40,7 +40,7 @@ func GetUserGroups(c *gin.Context) {
 		// UserUsableGroups contains the groups that the user can use
 		if desc, ok := userUsableGroups[groupName]; ok {
 			baseRatio := service.GetUserGroupRatio(userGroup, groupName)
-			usableGroups[groupName] = map[string]interface{}{
+			usableGroups[groupName] = map[string]any{
 				// ratio 是用户实际生效的倍率（已乘上用户专属倍率），
 				// base_ratio 保留分组自身的倍率，供前端展示换算过程。
 				"ratio":      service.ApplyUserRatio(baseRatio, userRatio),
@@ -50,7 +50,7 @@ func GetUserGroups(c *gin.Context) {
 		}
 	}
 	if _, ok := userUsableGroups["auto"]; ok {
-		usableGroups["auto"] = map[string]interface{}{
+		usableGroups["auto"] = map[string]any{
 			"ratio": "自动",
 			"desc":  setting.GetUsableGroupDescription("auto"),
 		}

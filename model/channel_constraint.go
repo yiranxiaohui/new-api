@@ -10,6 +10,7 @@ import (
 var filterEvalOrder = []dto.ChannelFilterKind{
 	dto.FilterRequestPath,
 	dto.FilterTaskPluginIdentity,
+	dto.FilterResponsesWebSocket,
 }
 
 // ChannelSatisfiesFilters reports whether ch passes every filter.
@@ -92,22 +93,35 @@ func channelMatchesFilter(ch *Channel, modelName string, filter dto.ChannelFilte
 		if filter.RequestPath == "" {
 			return true
 		}
-		if ch.Type != constant.ChannelTypeAdvancedCustom {
+		if !constant.IsAdvancedCustomChannel(ch.Type) {
 			return true
 		}
 		config := ch.GetOtherSettings().AdvancedCustom
 		return config != nil && config.SupportsPathForModel(filter.RequestPath, modelName)
 	case dto.FilterTaskPluginIdentity:
+		if filter.TaskPluginKey == "" && len(filter.TaskPluginChannelTypes) > 0 {
+			return slices.Contains(filter.TaskPluginChannelTypes, ch.Type)
+		}
 		if ch.Type == constant.ChannelTypeTaskPlugin {
-			if filter.TaskPluginKey != "" {
-				return ch.GetSetting().TaskPluginKey == filter.TaskPluginKey
-			}
-			return slices.Contains(filter.TaskPluginChannelTypes, ch.Type)
+			key := ch.GetSetting().TaskPluginKey
+			return filter.TaskPluginKey != "" && (key == filter.TaskPluginKey || slices.Contains(filter.TaskPluginKeys, key))
 		}
-		if len(filter.TaskPluginChannelTypes) > 0 {
-			return slices.Contains(filter.TaskPluginChannelTypes, ch.Type)
+		return filter.TaskPluginKey == "" || slices.Contains(filter.TaskPluginChannelTypes, ch.Type)
+	case dto.FilterResponsesWebSocket:
+		if !ch.GetSetting().ResponsesWebSocketEnabled {
+			return false
 		}
-		return filter.TaskPluginKey == ""
+		switch ch.Type {
+		case constant.ChannelTypeOpenAI, constant.ChannelTypeCodex, constant.ChannelTypeSub2API, constant.ChannelTypeNewAPI:
+			return true
+		case constant.ChannelTypeAdvancedCustom:
+			// The session forwards native Responses events without protocol
+			// conversion, so only a converter-free /v1/responses route qualifies.
+			route, ok := ch.GetOtherSettings().AdvancedCustom.MatchPathForModel("/v1/responses", modelName)
+			return ok && route.IsNative()
+		default:
+			return false
+		}
 	default:
 		return true
 	}

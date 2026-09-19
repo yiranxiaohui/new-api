@@ -105,7 +105,7 @@ func (a *Adaptor) ConvertOpenAIResponsesRequest(c *gin.Context, info *relaycommo
 	// accounts. Keep regular Codex requests stateless to avoid an upstream
 	// 400; the compaction endpoint retains the field because it is part of
 	// that endpoint's supported request contract.
-	if c == nil || c.Request == nil || !websocket.IsWebSocketUpgrade(c.Request) {
+	if (info == nil || info.ClientWs == nil) && (c == nil || c.Request == nil || !websocket.IsWebSocketUpgrade(c.Request)) {
 		request.PreviousResponseID = ""
 	}
 	// codex: store must be false

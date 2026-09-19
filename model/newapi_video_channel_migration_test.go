@@ -22,6 +22,8 @@ func TestMigrateNewAPIVideoChannelTypeRenumbersLegacyRows(t *testing.T) {
 	db := newNewAPIVideoMigrationDB(t)
 	require.NoError(t, db.Create(&Channel{Id: 1, Type: legacyNewAPIVideoChannelType, Name: "video-relay", Key: "k"}).Error)
 	require.NoError(t, db.Create(&Channel{Id: 2, Type: constant.ChannelTypeOpenAI, Name: "openai", Key: "k"}).Error)
+	require.NoError(t, db.Create(&Channel{Id: 3, Type: constant.ChannelTypeVLLM, Name: "inference", Key: "k"}).Error)
+	require.NoError(t, db.Create(&Channel{Id: 4, Type: constant.ChannelTypeSGLang, Name: "sglang", Key: "k"}).Error)
 	require.NoError(t, db.Create(&Task{TaskID: "task_a", Platform: constant.TaskPlatform("61"), ChannelId: 1}).Error)
 	require.NoError(t, db.Create(&Task{TaskID: "task_b", Platform: constant.TaskPlatform("55"), ChannelId: 2}).Error)
 
@@ -32,6 +34,14 @@ func TestMigrateNewAPIVideoChannelTypeRenumbersLegacyRows(t *testing.T) {
 	require.NoError(t, db.First(&openai, 2).Error)
 	assert.Equal(t, constant.ChannelTypeNewAPIVideo, video.Type)
 	assert.Equal(t, constant.ChannelTypeOpenAI, openai.Type)
+	assert.Equal(t, "New API Video", constant.GetChannelTypeName(video.Type))
+	for id, name := range map[int]string{3: "vLLM", 4: "SGLang"} {
+		var inference Channel
+		require.NoError(t, db.First(&inference, id).Error)
+		assert.Equal(t, name, constant.GetChannelTypeName(inference.Type))
+		assert.NotEqual(t, video.Type, inference.Type, "inference providers must never reuse a stored video channel type")
+	}
+	require.NoError(t, migrateNewAPIVideoChannelType(db, true))
 
 	var taskA, taskB Task
 	require.NoError(t, db.Where("task_id = ?", "task_a").First(&taskA).Error)

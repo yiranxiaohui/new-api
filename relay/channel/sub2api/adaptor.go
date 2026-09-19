@@ -24,7 +24,7 @@ func (a *Adaptor) GetChannelName() string {
 }
 
 func (a *Adaptor) ConvertOpenAIResponsesRequest(c *gin.Context, info *relaycommon.RelayInfo, request dto.OpenAIResponsesRequest) (any, error) {
-	if info != nil && info.RelayMode == relayconstant.RelayModeResponses &&
+	if info != nil && info.RelayMode == relayconstant.RelayModeResponses && info.ClientWs == nil &&
 		strings.TrimSpace(request.PreviousResponseID) != "" &&
 		(c == nil || c.Request == nil || !websocket.IsWebSocketUpgrade(c.Request)) {
 		// Sub2API subscription accounts cannot use previous_response_id on

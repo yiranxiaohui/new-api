@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestInMemoryRateLimiterConcurrentInit(t *testing.T) {
@@ -36,7 +37,9 @@ func TestInMemoryRateLimiterDisablesNonPositiveLimits(t *testing.T) {
 		limiter.Init(0)
 
 		assert.True(t, limiter.Request("request", maximum, 60))
-		assert.True(t, limiter.Reserve("reservation", maximum, 60, "test-reservation"))
-		assert.True(t, limiter.Check("check", maximum, 60))
+		reservation := limiter.Reserve("reservation", maximum, 60)
+		require.NotNil(t, reservation)
+		reservation.Complete(true)
+		reservation.Complete(false)
 	}
 }

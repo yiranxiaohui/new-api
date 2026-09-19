@@ -480,7 +480,7 @@ func TokenAuth() func(c *gin.Context) {
 }
 
 func applyWebSocketSubprotocolAuthorization(header http.Header) bool {
-	key, ok := apiKeyFromWebSocketSubprotocol(header.Get("Sec-WebSocket-Protocol"))
+	key, ok := apiKeyFromWebSocketSubprotocol(strings.Join(header.Values("Sec-WebSocket-Protocol"), ","))
 	if !ok {
 		return false
 	}
@@ -493,8 +493,7 @@ func apiKeyFromWebSocketSubprotocol(protocols string) (string, bool) {
 		return "", false
 	}
 	const insecureAPIKeyPrefix = "openai-insecure-api-key."
-	parts := strings.Split(protocols, ",")
-	for _, part := range parts {
+	for part := range strings.SplitSeq(protocols, ",") {
 		part = strings.TrimSpace(part)
 		if strings.HasPrefix(part, insecureAPIKeyPrefix) {
 			key := strings.TrimPrefix(part, insecureAPIKeyPrefix)
