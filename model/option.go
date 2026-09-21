@@ -235,6 +235,9 @@ func validateOptionValue(key string, value string) error {
 	if key == WithdrawalConfigKey {
 		return errors.New("Use the withdrawal settings endpoint to update this configuration.")
 	}
+	if err := operation_setting.ValidateQuotaOption(key, value); err != nil {
+		return err
+	}
 	if key == operation_setting.ToolPriceOptionKey {
 		return operation_setting.ValidateToolPricesJSON(value)
 	}

@@ -99,14 +99,19 @@ func channelMatchesFilter(ch *Channel, modelName string, filter dto.ChannelFilte
 		config := ch.GetOtherSettings().AdvancedCustom
 		return config != nil && config.SupportsPathForModel(filter.RequestPath, modelName)
 	case dto.FilterTaskPluginIdentity:
-		if filter.TaskPluginKey == "" && len(filter.TaskPluginChannelTypes) > 0 {
-			return slices.Contains(filter.TaskPluginChannelTypes, ch.Type)
+		if filter.TaskPluginKey == "" {
+			if len(filter.TaskPluginChannelTypes) > 0 {
+				return slices.Contains(filter.TaskPluginChannelTypes, ch.Type)
+			}
+			return ch.Type != constant.ChannelTypeTaskPlugin
 		}
-		if ch.Type == constant.ChannelTypeTaskPlugin {
-			key := ch.GetSetting().TaskPluginKey
-			return filter.TaskPluginKey != "" && (key == filter.TaskPluginKey || slices.Contains(filter.TaskPluginKeys, key))
+		if ch.Type == constant.ChannelTypeTaskPlugin || ch.Type == constant.ChannelTypeNewAPI {
+			// A New API channel serves every plugin it is extended with; the
+			// pinned plugin or any shared-model candidate may execute there.
+			setting := ch.GetSetting()
+			return setting.BindsTaskPlugin(filter.TaskPluginKey) || slices.ContainsFunc(filter.TaskPluginKeys, setting.BindsTaskPlugin)
 		}
-		return filter.TaskPluginKey == "" || slices.Contains(filter.TaskPluginChannelTypes, ch.Type)
+		return slices.Contains(filter.TaskPluginChannelTypes, ch.Type)
 	case dto.FilterResponsesWebSocket:
 		if !ch.GetSetting().ResponsesWebSocketEnabled {
 			return false
