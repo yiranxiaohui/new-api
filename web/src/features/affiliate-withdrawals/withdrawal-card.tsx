@@ -52,9 +52,13 @@ export function WithdrawalCard(props: {
       <CardHeader>
         <CardTitle>{t('Withdraw referral rewards')}</CardTitle>
         <CardDescription>
-          {t(
-            'Withdraw to Alipay after administrator approval. Pending amounts are frozen and cannot be transferred to your balance.'
-          )}
+          {policy.data?.mode === 'manual'
+            ? t(
+                'Withdraw to a bank card after administrator approval. Pending amounts are frozen and cannot be transferred to your balance.'
+              )
+            : t(
+                'Withdraw to Alipay after administrator approval. Pending amounts are frozen and cannot be transferred to your balance.'
+              )}
         </CardDescription>
       </CardHeader>
       <CardContent className='space-y-4'>

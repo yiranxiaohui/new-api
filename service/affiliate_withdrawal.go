@@ -52,7 +52,8 @@ func ReconcileAffiliateWithdrawal(ctx context.Context, w model.AffiliateWithdraw
 	if err != nil {
 		return err
 	}
-	if client.BaseURL != snapshot.Gateway || client.PID != snapshot.PID {
+	// Manual withdrawals are never sent to the gateway.
+	if snapshot.PayoutMode() != model.WithdrawalModeUniPay || client.BaseURL != snapshot.Gateway || client.PID != snapshot.PID {
 		return model.ErrWithdrawalMismatch
 	}
 	result, status, err := client.Call(ctx, unipay.QueryPath, map[string]string{"out_biz_no": w.ID})

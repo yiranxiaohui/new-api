@@ -36,6 +36,14 @@ import {
   FormMessage,
 } from '@/components/ui/form'
 import { Input } from '@/components/ui/input'
+import {
+  Select,
+  SelectContent,
+  SelectGroup,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select'
 import { Switch } from '@/components/ui/switch'
 import { Textarea } from '@/components/ui/textarea'
 import {
@@ -63,17 +71,18 @@ import { WithdrawalHistory } from './withdrawal-history'
 const schema = z
   .object({
     enabled: z.boolean(),
-    gateway: z.url(),
-    pid: z.string().min(1).max(64),
+    mode: z.enum(['manual', 'unipay']),
+    gateway: z.string().max(2048),
+    pid: z.string().max(64),
     api_key: z.string().regex(/^([0-9a-fA-F]{64})?$/),
-    notify_url: z.url(),
+    notify_url: z.string().max(2048),
     cny_per_unit: z
       .string()
       .regex(/^\d+(\.\d{1,6})?$/)
       .refine((value) => Number(value) > 0 && Number(value) <= 1000000),
     min_cents: z.coerce.number().int().min(1),
     max_cents: z.coerce.number().int().min(1).max(100000000),
-    scene: z.string().min(1).max(64),
+    scene: z.string().max(64),
     scene_infos_json: z.string().refine((value) => {
       try {
         return z
@@ -93,6 +102,24 @@ const schema = z
   .refine((value) => value.max_cents >= value.min_cents, {
     path: ['max_cents'],
     message: 'Invalid withdrawal details or amount.',
+  })
+  .superRefine((value, context) => {
+    // UniPay fields are only required when payouts go through the gateway.
+    if (value.mode !== 'unipay') return
+    for (const name of ['gateway', 'notify_url'] as const) {
+      if (!z.url().safeParse(value[name]).success) {
+        context.addIssue({
+          code: 'custom',
+          path: [name],
+          message: 'Must be a valid URL',
+        })
+      }
+    }
+    for (const name of ['pid', 'scene'] as const) {
+      if (value[name].trim() === '') {
+        context.addIssue({ code: 'custom', path: [name], message: 'Required' })
+      }
+    }
   })
 type Values = z.infer<typeof schema>
 
@@ -155,14 +182,23 @@ function WithdrawalSettingsForm(props: {
       },
     }
   )
+  const unipay = form.watch('mode') === 'unipay'
+  const modeItems = [
+    { value: 'manual', label: t('Manual bank transfer') },
+    { value: 'unipay', label: t('UniPay Alipay transfer') },
+  ]
   const fields = [
-    ['gateway', t('Payout gateway URL')],
-    ['pid', t('Merchant PID')],
-    ['notify_url', t('Payout notification URL')],
     ['cny_per_unit', t('CNY per quota unit')],
     ['min_cents', t('Minimum withdrawal (cents)')],
     ['max_cents', t('Maximum withdrawal (cents)')],
-    ['scene', t('Alipay transfer scene')],
+    ...(unipay
+      ? ([
+          ['gateway', t('Payout gateway URL')],
+          ['pid', t('Merchant PID')],
+          ['notify_url', t('Payout notification URL')],
+          ['scene', t('Alipay transfer scene')],
+        ] as const)
+      : []),
   ] as const
   return (
     <SettingsSection title={t('Referral withdrawals')}>
@@ -184,9 +220,13 @@ function WithdrawalSettingsForm(props: {
             isSaving={isSubmitting}
           />
           <p className='text-muted-foreground text-sm'>
-            {t(
-              'Use the independent UniPay payout key. New withdrawals require review by the root administrator and two-factor or passkey verification.'
-            )}
+            {unipay
+              ? t(
+                  'Use the independent UniPay payout key. New withdrawals require review by the root administrator and two-factor or passkey verification.'
+                )
+              : t(
+                  'Users submit bank account details. The root administrator transfers each withdrawal manually, then marks it as paid in the request list.'
+                )}
           </p>
           <p className='text-muted-foreground text-sm'>
             {t(
@@ -212,6 +252,42 @@ function WithdrawalSettingsForm(props: {
                       'Disabling withdrawals stops new payouts; accepted payouts continue to be reconciled.'
                     )}
                   </FormDescription>
+                </FormItem>
+              )}
+            />
+            <FormField
+              control={form.control}
+              name='mode'
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>{t('Payout method')}</FormLabel>
+                  <Select
+                    items={modeItems}
+                    value={field.value}
+                    onValueChange={(value) => value && field.onChange(value)}
+                    disabled={isSubmitting}
+                  >
+                    <FormControl>
+                      <SelectTrigger className='w-full'>
+                        <SelectValue />
+                      </SelectTrigger>
+                    </FormControl>
+                    <SelectContent alignItemWithTrigger={false}>
+                      <SelectGroup>
+                        {modeItems.map((item) => (
+                          <SelectItem key={item.value} value={item.value}>
+                            {item.label}
+                          </SelectItem>
+                        ))}
+                      </SelectGroup>
+                    </SelectContent>
+                  </Select>
+                  <FormDescription>
+                    {t(
+                      'Use manual bank transfer when the Alipay transfer product is unavailable.'
+                    )}
+                  </FormDescription>
+                  <FormMessage />
                 </FormItem>
               )}
             />
@@ -253,48 +329,54 @@ function WithdrawalSettingsForm(props: {
                 )}
               />
             ))}
-            <FormField
-              control={form.control}
-              name='api_key'
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel>{t('UniPay payout API key')}</FormLabel>
-                  <FormControl>
-                    <PasswordInput
-                      {...field}
-                      disabled={isSubmitting}
-                      autoComplete='new-password'
-                    />
-                  </FormControl>
-                  <FormDescription>
-                    {props.keyConfigured
-                      ? t('A payout key is configured. Leave blank to keep it.')
-                      : t('Enter the 64-character payout key from UniPay.')}
-                  </FormDescription>
-                  <FormMessage />
-                </FormItem>
-              )}
-            />
-            <FormField
-              control={form.control}
-              name='scene_infos_json'
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel>
-                    {t('Transfer scene report information (JSON)')}
-                  </FormLabel>
-                  <FormControl>
-                    <Textarea {...field} disabled={isSubmitting} rows={5} />
-                  </FormControl>
-                  <FormDescription>
-                    {t(
-                      'Use the real scene and information required by your Alipay transfer agreement.'
-                    )}
-                  </FormDescription>
-                  <FormMessage />
-                </FormItem>
-              )}
-            />
+            {unipay && (
+              <>
+                <FormField
+                  control={form.control}
+                  name='api_key'
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>{t('UniPay payout API key')}</FormLabel>
+                      <FormControl>
+                        <PasswordInput
+                          {...field}
+                          disabled={isSubmitting}
+                          autoComplete='new-password'
+                        />
+                      </FormControl>
+                      <FormDescription>
+                        {props.keyConfigured
+                          ? t(
+                              'A payout key is configured. Leave blank to keep it.'
+                            )
+                          : t('Enter the 64-character payout key from UniPay.')}
+                      </FormDescription>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+                <FormField
+                  control={form.control}
+                  name='scene_infos_json'
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>
+                        {t('Transfer scene report information (JSON)')}
+                      </FormLabel>
+                      <FormControl>
+                        <Textarea {...field} disabled={isSubmitting} rows={5} />
+                      </FormControl>
+                      <FormDescription>
+                        {t(
+                          'Use the real scene and information required by your Alipay transfer agreement.'
+                        )}
+                      </FormDescription>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+              </>
+            )}
           </SettingsFormGrid>
         </SettingsForm>
       </Form>

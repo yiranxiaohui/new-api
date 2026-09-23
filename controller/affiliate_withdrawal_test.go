@@ -50,6 +50,7 @@ func setupWithdrawalTest(t *testing.T) (model.User, model.WithdrawalConfig) {
 	assert.Equal(t, 500000, preserved.AffQuota)
 	config := model.DefaultWithdrawalConfig()
 	config.Enabled = true
+	config.Mode = model.WithdrawalModeUniPay
 	config.PID = "1001"
 	config.APIKey = withdrawalTestKey
 	config.NotifyURL = "https://business.example.com/api/user/withdrawals/notify"
@@ -299,7 +300,7 @@ func TestAffiliateWithdrawalGatewayUnknownAndStableRetries(t *testing.T) {
 func TestAffiliateWithdrawalSecurityProofIsRequiredAndBound(t *testing.T) {
 	user, identity := setupSecurityEnrollmentTest(t)
 	t.Setenv("CRYPTO_SECRET", "synthetic-withdrawal-encryption-key-for-tests")
-	operation := service.VerificationOperation{Scope: service.VerificationScopeWithdrawalCreate, Context: []byte(`{"id":"wd_proof","amount_cents":140,"quota":100000,"payee_account":"recipient@example.com","payee_name":"Recipient"}`)}
+	operation := service.VerificationOperation{Scope: service.VerificationScopeWithdrawalCreate, Context: []byte(`{"id":"wd_proof","amount_cents":140,"quota":100000,"payee_account":"recipient@example.com","payee_name":"Recipient","payee_bank":""}`)}
 	requirements, err := service.GetVerificationRequirements(identity, operation.Scope)
 	require.NoError(t, err)
 	assert.Empty(t, requirements.Methods, "withdrawals do not fall back to a password when no strong factor is enrolled")
@@ -330,10 +331,10 @@ func TestAffiliateWithdrawalSignatureAndConfigDigest(t *testing.T) {
 	// Fixed vectors independently calculated with Python hashlib/hmac.
 	body := []byte(`{"out_biz_no":"wd_test"}`)
 	assert.Equal(t, "175ccb70082655f0e341186af316a3d2ca9beadbd6b45a736f392771408d769f", unipay.Signature(withdrawalTestKey, "unipay-payout-v1", "1001", "1788998400", "0123456789abcdef", unipay.QueryPath, body))
-	config := model.WithdrawalConfig{Gateway: "https://pay.yunnet.top", PID: "1001", CNYPerUnit: "7", MinCents: 100, MaxCents: 10000, Scene: "测试 & < >\u2028\u2029", SceneInfos: []unipay.SceneInfo{}}
+	config := model.WithdrawalConfig{Mode: model.WithdrawalModeManual, Gateway: "https://pay.yunnet.top", PID: "1001", CNYPerUnit: "7", MinCents: 100, MaxCents: 10000, Scene: "测试 & < >\u2028\u2029", SceneInfos: []unipay.SceneInfo{}}
 	digest, err := service.WithdrawalConfigDigest(config)
 	require.NoError(t, err)
-	assert.Equal(t, "ef7dbb1924fb8e17aa81938c214ad69e054d36efae9afd2c1de3d808188fc60e", digest)
+	assert.Equal(t, "95f614d5dc98bf93f1643ef01294f07f1bd25407f81bf52c593cbc1595f8dc3a", digest)
 }
 
 func TestAffiliateWithdrawalAuthenticatedRequestsAndIsolation(t *testing.T) {
@@ -347,7 +348,7 @@ func TestAffiliateWithdrawalAuthenticatedRequestsAndIsolation(t *testing.T) {
 	require.NoError(t, model.DB.Create(&model.PasskeyCredential{UserID: user.Id, CredentialID: "withdrawal-http-passkey"}).Error)
 	require.NoError(t, model.DB.Model(user).Updates(map[string]any{"aff_quota": 500000, "quota": 2000000}).Error)
 	config := model.DefaultWithdrawalConfig()
-	config.Enabled, config.PID, config.APIKey = true, "1001", withdrawalTestKey
+	config.Enabled, config.Mode, config.PID, config.APIKey = true, model.WithdrawalModeUniPay, "1001", withdrawalTestKey
 	config.NotifyURL, config.Scene = "https://business.example.com/api/user/withdrawals/notify", "Test scene"
 	require.NoError(t, model.SaveWithdrawalConfig(config))
 	quota, err := model.QuoteWithdrawal(config, 140)
@@ -433,4 +434,69 @@ func TestAffiliateWithdrawalPaidRechargeRewardOnce(t *testing.T) {
 	assert.Equal(t, 600000, inviter.AffHistoryQuota)
 	require.NoError(t, model.DB.First(&invitee, invitee.Id).Error)
 	assert.Equal(t, 1000000, invitee.Quota)
+}
+
+func TestAffiliateWithdrawalManualBankPayout(t *testing.T) {
+	user, _ := setupWithdrawalTest(t)
+	// Manual payouts need no UniPay merchant, key, notification URL or scene.
+	config := model.DefaultWithdrawalConfig()
+	config.Enabled = true
+	require.Equal(t, model.WithdrawalModeManual, config.Mode)
+	require.NoError(t, model.SaveWithdrawalConfig(config))
+	secrets, err := model.ReadWithdrawalSecrets(model.DB)
+	require.NoError(t, err)
+	assert.Equal(t, model.WithdrawalModeManual, secrets.Config.Mode)
+
+	quota, err := model.QuoteWithdrawal(config, 140)
+	require.NoError(t, err)
+	input := model.WithdrawalRequest{ID: "wd_manual", AmountCents: 140, Quota: quota, PayeeAccount: "6222020000000000000", PayeeName: "Test Payee"}
+	_, err = model.CreateAffiliateWithdrawal(user.Id, input)
+	require.ErrorIs(t, err, model.ErrWithdrawalInvalid, "bank name is required for manual payouts")
+	input.PayeeBank = "Test Bank Branch"
+	w, err := model.CreateAffiliateWithdrawal(user.Id, input)
+	require.NoError(t, err)
+	assert.NotContains(t, w.RequestCiphertext, "6222020000000000000")
+	input.PayeeBank = "Other Bank"
+	_, err = model.CreateAffiliateWithdrawal(user.Id, input)
+	require.ErrorIs(t, err, model.ErrWithdrawalMismatch)
+
+	// Switching payout methods is blocked while a withdrawal is outstanding.
+	unipayConfig := config
+	unipayConfig.Mode, unipayConfig.PID, unipayConfig.APIKey = model.WithdrawalModeUniPay, "1001", withdrawalTestKey
+	unipayConfig.NotifyURL, unipayConfig.Scene = "https://business.example.com/api/user/withdrawals/notify", "Test scene"
+	require.ErrorIs(t, model.SaveWithdrawalConfig(unipayConfig), model.ErrWithdrawalOutstanding)
+
+	// The gateway never receives manual withdrawals.
+	client := unipay.Client{BaseURL: "https://pay.example.com", PID: "1001", Key: withdrawalTestKey}
+	require.ErrorIs(t, service.ReconcileAffiliateWithdrawal(context.Background(), *w, client, true), model.ErrWithdrawalState)
+
+	rows, _, err := model.ListAffiliateWithdrawals(0, 1)
+	require.NoError(t, err)
+	require.Len(t, rows, 1)
+	assert.Equal(t, model.WithdrawalModeManual, rows[0].Mode)
+	assert.Equal(t, "Test Bank Branch", rows[0].PayeeBank)
+
+	// Approval records the administrator's transfer and keeps the quota deducted.
+	require.NoError(t, model.ReviewAffiliateWithdrawal(w.ID, 9999, true))
+	require.NoError(t, model.DB.Where("id = ?", w.ID).First(w).Error)
+	assert.Equal(t, model.WithdrawalSucceeded, w.Status)
+	assert.NotZero(t, w.CompletedAt)
+	require.ErrorIs(t, model.ReviewAffiliateWithdrawal(w.ID, 9999, false), model.ErrWithdrawalState)
+	require.ErrorIs(t, service.ReconcileAffiliateWithdrawal(context.Background(), *w, client, true), model.ErrWithdrawalState)
+	require.NoError(t, model.DB.First(&user, user.Id).Error)
+	assert.Equal(t, 500000-quota, user.AffQuota)
+
+	// Rejection returns the frozen rewards.
+	input.ID, input.PayeeBank = "wd_manual_reject", "Test Bank Branch"
+	rejected, err := model.CreateAffiliateWithdrawal(user.Id, input)
+	require.NoError(t, err)
+	require.NoError(t, model.ReviewAffiliateWithdrawal(rejected.ID, 9999, false))
+	require.NoError(t, model.DB.First(&user, user.Id).Error)
+	assert.Equal(t, 500000-quota, user.AffQuota)
+
+	// With nothing outstanding the operator may switch to UniPay, where bank names are refused.
+	require.NoError(t, model.SaveWithdrawalConfig(unipayConfig))
+	input.ID = "wd_unipay_bank"
+	_, err = model.CreateAffiliateWithdrawal(user.Id, input)
+	require.ErrorIs(t, err, model.ErrWithdrawalInvalid)
 }

@@ -51,6 +51,7 @@ export type VerificationOperation =
         quota: number
         payee_account: string
         payee_name: string
+        payee_bank: string
       }
     }
   | { scope: 'withdrawal.review'; context: { id: string; approve: boolean } }

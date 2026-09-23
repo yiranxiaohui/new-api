@@ -63,6 +63,7 @@ it('requires a quote and sufficient referral quota before requesting security ve
         availableQuota={5000}
         policy={{
           enabled: true,
+          mode: 'unipay',
           min_cents: 100,
           max_cents: 10000,
           cny_per_unit: '7',
@@ -85,6 +86,7 @@ it('requires a quote and sufficient referral quota before requesting security ve
 it('binds Unicode and HTML characters in payout settings to the server digest', async () => {
   const digest = await withdrawalConfigDigest({
     enabled: false,
+    mode: 'manual',
     gateway: 'https://pay.yunnet.top',
     pid: '1001',
     api_key: '',
@@ -96,7 +98,7 @@ it('binds Unicode and HTML characters in payout settings to the server digest', 
     scene_infos: [],
   })
   expect(digest).toBe(
-    'ef7dbb1924fb8e17aa81938c214ad69e054d36efae9afd2c1de3d808188fc60e'
+    '95f614d5dc98bf93f1643ef01294f07f1bd25407f81bf52c593cbc1595f8dc3a'
   )
 })
 
@@ -146,6 +148,7 @@ it('keeps the same withdrawal details after a network failure and requires a new
         availableQuota={500000}
         policy={{
           enabled: true,
+          mode: 'unipay',
           min_cents: 100,
           max_cents: 10000,
           cny_per_unit: '7',
@@ -185,6 +188,7 @@ it('keeps the same withdrawal details after a network failure and requires a new
     quota: 100000,
     payee_account: 'recipient@example.com',
     payee_name: 'Recipient',
+    payee_bank: '',
   })
   expect(success).toHaveBeenCalledOnce()
   expect(busy.mock.calls).toEqual([[true], [false], [true], [false]])
@@ -192,6 +196,92 @@ it('keeps the same withdrawal details after a network failure and requires a new
     '/api/verify/methods',
     expect.objectContaining({ params: { scope: 'withdrawal.create' } })
   )
+})
+
+it('collects bank details for manual withdrawals', async () => {
+  vi.spyOn(api, 'get').mockImplementation(async (url) => ({
+    data: {
+      success: true,
+      data:
+        url === '/api/verify/methods'
+          ? {
+              scope: 'withdrawal.create',
+              methods: [{ method: '2fa', available: true }],
+              oauth_providers: [],
+              password_encryption_enabled: false,
+            }
+          : { quota: 100000, amount_cents: 140 },
+    },
+  }))
+  const post = vi.spyOn(api, 'post').mockImplementation(async (url) =>
+    url === '/api/verify'
+      ? {
+          data: {
+            success: true,
+            data: {
+              proof_token: 'manual-proof',
+              method: '2fa',
+              scope: 'withdrawal.create',
+              expires_at: Math.floor(Date.now() / 1000) + 300,
+            },
+          },
+        }
+      : { data: { success: true, data: { id: 'accepted' } } }
+  )
+  const user = userEvent.setup()
+  const client = new QueryClient({
+    defaultOptions: { queries: { retry: false } },
+  })
+  render(
+    <QueryClientProvider client={client}>
+      <WithdrawalForm
+        availableQuota={500000}
+        policy={{
+          enabled: true,
+          mode: 'manual',
+          min_cents: 100,
+          max_cents: 10000,
+          cny_per_unit: '7',
+        }}
+        onSuccess={vi.fn()}
+      />
+    </QueryClientProvider>
+  )
+  expect(screen.queryByLabelText('Alipay account')).toBeNull()
+  await user.type(screen.getByLabelText('Withdrawal amount (CNY)'), '1.40')
+  await user.type(
+    screen.getByLabelText('Bank card number'),
+    '6222020000000000000'
+  )
+  await user.type(screen.getByLabelText('Recipient legal name'), 'Recipient')
+  await waitFor(() =>
+    expect(screen.getByText(/Referral quota to freeze/)).toBeTruthy()
+  )
+  const submit = screen.getByRole('button', { name: 'Request withdrawal' })
+  expect(submit).toBeDisabled()
+  await user.type(screen.getByLabelText('Bank and branch'), 'Test Bank Branch')
+  await waitFor(() => expect(submit).toBeEnabled())
+  await user.click(submit)
+  await user.type(
+    await screen.findByLabelText('Authenticator code or backup code'),
+    '123456'
+  )
+  await user.click(screen.getByRole('button', { name: 'Verify' }))
+  await waitFor(() =>
+    expect(
+      post.mock.calls.filter(([url]) => url === '/api/user/withdrawals')
+    ).toHaveLength(1)
+  )
+  expect(
+    post.mock.calls.find(([url]) => url === '/api/user/withdrawals')?.[1]
+  ).toEqual({
+    id: expect.stringMatching(/^wd_/),
+    amount_cents: 140,
+    quota: 100000,
+    payee_account: '6222020000000000000',
+    payee_name: 'Recipient',
+    payee_bank: 'Test Bank Branch',
+  })
 })
 
 function SettingsHarness() {
@@ -208,6 +298,7 @@ function SettingsHarness() {
 it('clears the payout key after a verified settings save', async () => {
   const config = {
     enabled: false,
+    mode: 'unipay' as const,
     gateway: 'https://pay.yunnet.top',
     pid: '1001',
     api_key: '',

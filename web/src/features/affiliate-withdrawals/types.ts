@@ -16,8 +16,10 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
+export type WithdrawalMode = 'manual' | 'unipay'
 export type WithdrawalPolicy = {
   enabled: boolean
+  mode: WithdrawalMode
   min_cents: number
   max_cents: number
   cny_per_unit: string
@@ -36,10 +38,12 @@ export type Withdrawal = {
   quota: number
   amount_cents: number
   status: 'pending' | 'processing' | 'succeeded' | 'failed' | 'rejected'
+  mode: WithdrawalMode
   payout_no: string
   failure_code: string
   payee_account: string
   payee_name: string
+  payee_bank: string
   created_at: number
 }
 export type WithdrawalInput = {
@@ -48,6 +52,7 @@ export type WithdrawalInput = {
   quota: number
   payee_account: string
   payee_name: string
+  payee_bank: string
 }
 
 export function parseCNYCents(value: string): number | null {

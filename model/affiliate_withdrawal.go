@@ -27,15 +27,22 @@ const WithdrawalSucceeded = "succeeded"
 const WithdrawalFailed = "failed"
 const WithdrawalRejected = "rejected"
 
+// Manual withdrawals are paid by an administrator outside the system (for
+// example a bank transfer); UniPay withdrawals are paid through the gateway.
+const WithdrawalModeManual = "manual"
+const WithdrawalModeUniPay = "unipay"
+
 var ErrWithdrawalUnavailable = errors.New("Affiliate withdrawals are not configured or enabled.")
 var ErrWithdrawalInvalid = errors.New("Invalid withdrawal details or amount.")
 var ErrWithdrawalFunds = errors.New("Insufficient available referral rewards.")
 var ErrWithdrawalState = errors.New("This withdrawal cannot be changed in its current state.")
 var ErrWithdrawalMismatch = errors.New("Withdrawal details changed. Refresh and try again.")
+var ErrWithdrawalOutstanding = errors.New("Resolve outstanding withdrawals before changing the payout method, gateway or merchant PID.")
 var ErrWithdrawalStorageKey = errors.New("Configure a persistent CRYPTO_SECRET or SESSION_SECRET of at least 32 characters before enabling withdrawals.")
 
 type WithdrawalConfig struct {
 	Enabled    bool               `json:"enabled"`
+	Mode       string             `json:"mode"`
 	Gateway    string             `json:"gateway"`
 	PID        string             `json:"pid"`
 	APIKey     string             `json:"api_key"`
@@ -74,18 +81,31 @@ type WithdrawalRequest struct {
 	Quota        int    `json:"quota"`
 	PayeeAccount string `json:"payee_account"`
 	PayeeName    string `json:"payee_name"`
+	PayeeBank    string `json:"payee_bank"`
 }
 
 type WithdrawalSnapshot struct {
-	Gateway string         `json:"gateway"`
-	PID     string         `json:"pid"`
-	Payout  unipay.Request `json:"payout"`
+	Mode      string         `json:"mode,omitempty"`
+	Gateway   string         `json:"gateway"`
+	PID       string         `json:"pid"`
+	PayeeBank string         `json:"payee_bank,omitempty"`
+	Payout    unipay.Request `json:"payout"`
+}
+
+// PayoutMode treats snapshots written before manual withdrawals existed as UniPay.
+func (s WithdrawalSnapshot) PayoutMode() string {
+	if s.Mode == WithdrawalModeManual {
+		return WithdrawalModeManual
+	}
+	return WithdrawalModeUniPay
 }
 
 type WithdrawalView struct {
 	AffiliateWithdrawal
+	Mode         string `json:"mode"`
 	PayeeAccount string `json:"payee_account"`
 	PayeeName    string `json:"payee_name"`
+	PayeeBank    string `json:"payee_bank"`
 }
 
 // withdrawalCipher uses a stable operator-managed secret, never the random
@@ -137,7 +157,7 @@ func decryptWithdrawal(raw, binding string, value any) error {
 }
 
 func DefaultWithdrawalConfig() WithdrawalConfig {
-	return WithdrawalConfig{Gateway: "https://pay.yunnet.top", CNYPerUnit: "7", MinCents: 100, MaxCents: 10000, SceneInfos: []unipay.SceneInfo{}}
+	return WithdrawalConfig{Mode: WithdrawalModeManual, Gateway: "https://pay.yunnet.top", CNYPerUnit: "7", MinCents: 100, MaxCents: 10000, SceneInfos: []unipay.SceneInfo{}}
 }
 func ReadWithdrawalSecrets(tx *gorm.DB) (*WithdrawalSecrets, error) {
 	var option Option
@@ -152,19 +172,29 @@ func ReadWithdrawalSecrets(tx *gorm.DB) (*WithdrawalSecrets, error) {
 	if err = decryptWithdrawal(option.Value, WithdrawalConfigKey, &secrets); err != nil {
 		return nil, err
 	}
+	// Settings saved before payout modes existed always used UniPay.
+	if secrets.Config.Mode == "" {
+		secrets.Config.Mode = WithdrawalModeUniPay
+	}
 	return &secrets, nil
 }
 
 func (config WithdrawalConfig) Validate() error {
-	if !unipay.ValidText(config.PID, 64) || !unipay.KeyPattern.MatchString(config.APIKey) || config.MinCents < 1 || config.MaxCents < config.MinCents || config.MaxCents > unipay.MaxAmountCents {
+	if config.Mode != WithdrawalModeManual && config.Mode != WithdrawalModeUniPay || config.MinCents < 1 || config.MaxCents < config.MinCents || config.MaxCents > unipay.MaxAmountCents {
 		return ErrWithdrawalInvalid
-	}
-	if err := unipay.ValidateHTTPS(config.Gateway, true); err != nil {
-		return err
 	}
 	rate, err := decimal.NewFromString(config.CNYPerUnit)
 	if err != nil || rate.LessThanOrEqual(decimal.Zero) || rate.GreaterThan(decimal.NewFromInt(1000000)) || rate.Exponent() < -6 {
 		return ErrWithdrawalInvalid
+	}
+	if config.Mode == WithdrawalModeManual {
+		return nil
+	}
+	if !unipay.ValidText(config.PID, 64) || !unipay.KeyPattern.MatchString(config.APIKey) {
+		return ErrWithdrawalInvalid
+	}
+	if err := unipay.ValidateHTTPS(config.Gateway, true); err != nil {
+		return err
 	}
 	return (unipay.Request{OutBizNo: "validation", AmountCents: config.MinCents, PayeeAccount: "validation@example.com", PayeeName: "validation", Title: "Referral withdrawal", NotifyURL: config.NotifyURL, Scene: config.Scene, SceneInfos: config.SceneInfos}).Validate()
 }
@@ -197,21 +227,29 @@ func SaveWithdrawalConfig(config WithdrawalConfig) error {
 		if config.Enabled && !operation_setting.IsPaymentComplianceConfirmed() {
 			return ErrWithdrawalUnavailable
 		}
-		if config.Gateway != previous.Config.Gateway || config.PID != previous.Config.PID {
+		previousMode := previous.Config.Mode
+		if previousMode == "" && option.Value != "" {
+			previousMode = WithdrawalModeUniPay
+		}
+		if config.Gateway != previous.Config.Gateway || config.PID != previous.Config.PID || (option.Value != "" && config.Mode != previousMode) {
 			var outstanding int64
 			if err := tx.Model(&AffiliateWithdrawal{}).Where("status IN ?", []string{WithdrawalPending, WithdrawalProcessing}).Count(&outstanding).Error; err != nil {
 				return err
 			}
 			if outstanding > 0 {
-				return errors.New("Resolve outstanding withdrawals before changing the gateway or merchant PID.")
+				return ErrWithdrawalOutstanding
 			}
-			previous.Keys = map[string]string{}
+			if config.Gateway != previous.Config.Gateway || config.PID != previous.Config.PID {
+				previous.Keys = map[string]string{}
+			}
 		}
 		previous.Config = config
 		if previous.Keys == nil {
 			previous.Keys = map[string]string{}
 		}
-		previous.Keys[unipay.KeyID(config.APIKey)] = config.APIKey
+		if config.APIKey != "" {
+			previous.Keys[unipay.KeyID(config.APIKey)] = config.APIKey
+		}
 		encrypted, err := encryptWithdrawal(previous, WithdrawalConfigKey)
 		if err != nil {
 			return err
@@ -256,7 +294,7 @@ func (w *AffiliateWithdrawal) Snapshot() (*WithdrawalSnapshot, error) {
 }
 
 func CreateAffiliateWithdrawal(userID int, input WithdrawalRequest) (*AffiliateWithdrawal, error) {
-	if !unipay.Identifier.MatchString(input.ID) || !unipay.ValidText(input.PayeeAccount, 100) || !unipay.ValidText(input.PayeeName, 100) {
+	if !unipay.Identifier.MatchString(input.ID) || !unipay.ValidText(input.PayeeAccount, 100) || !unipay.ValidText(input.PayeeName, 100) || (input.PayeeBank != "" && !unipay.ValidText(input.PayeeBank, 100)) {
 		return nil, ErrWithdrawalInvalid
 	}
 	var withdrawal AffiliateWithdrawal
@@ -272,7 +310,7 @@ func CreateAffiliateWithdrawal(userID int, input WithdrawalRequest) (*AffiliateW
 			if err != nil {
 				return err
 			}
-			if withdrawal.UserID != userID || withdrawal.AmountCents != input.AmountCents || withdrawal.Quota != input.Quota || snapshot.Payout.PayeeAccount != input.PayeeAccount || snapshot.Payout.PayeeName != input.PayeeName {
+			if withdrawal.UserID != userID || withdrawal.AmountCents != input.AmountCents || withdrawal.Quota != input.Quota || snapshot.Payout.PayeeAccount != input.PayeeAccount || snapshot.Payout.PayeeName != input.PayeeName || snapshot.PayeeBank != input.PayeeBank {
 				return ErrWithdrawalMismatch
 			}
 			return nil
@@ -291,9 +329,21 @@ func CreateAffiliateWithdrawal(userID int, input WithdrawalRequest) (*AffiliateW
 		if quota != input.Quota {
 			return ErrWithdrawalMismatch
 		}
-		snapshot := WithdrawalSnapshot{Gateway: secrets.Config.Gateway, PID: secrets.Config.PID, Payout: unipay.Request{OutBizNo: input.ID, AmountCents: input.AmountCents, PayeeAccount: input.PayeeAccount, PayeeName: input.PayeeName, Title: "Referral withdrawal", NotifyURL: secrets.Config.NotifyURL, Scene: secrets.Config.Scene, SceneInfos: secrets.Config.SceneInfos}}
-		if err := snapshot.Payout.Validate(); err != nil {
-			return err
+		var snapshot WithdrawalSnapshot
+		if secrets.Config.Mode == WithdrawalModeManual {
+			// Manual payouts go to a bank account, so the bank name is required.
+			if input.PayeeBank == "" {
+				return ErrWithdrawalInvalid
+			}
+			snapshot = WithdrawalSnapshot{Mode: WithdrawalModeManual, PayeeBank: input.PayeeBank, Payout: unipay.Request{OutBizNo: input.ID, AmountCents: input.AmountCents, PayeeAccount: input.PayeeAccount, PayeeName: input.PayeeName}}
+		} else {
+			if input.PayeeBank != "" {
+				return ErrWithdrawalInvalid
+			}
+			snapshot = WithdrawalSnapshot{Mode: WithdrawalModeUniPay, Gateway: secrets.Config.Gateway, PID: secrets.Config.PID, Payout: unipay.Request{OutBizNo: input.ID, AmountCents: input.AmountCents, PayeeAccount: input.PayeeAccount, PayeeName: input.PayeeName, Title: "Referral withdrawal", NotifyURL: secrets.Config.NotifyURL, Scene: secrets.Config.Scene, SceneInfos: secrets.Config.SceneInfos}}
+			if err := snapshot.Payout.Validate(); err != nil {
+				return err
+			}
 		}
 		encrypted, err := encryptWithdrawal(snapshot, input.ID)
 		if err != nil {
@@ -312,6 +362,9 @@ func CreateAffiliateWithdrawal(userID int, input WithdrawalRequest) (*AffiliateW
 	return &withdrawal, err
 }
 
+// ReviewAffiliateWithdrawal approves or rejects a pending withdrawal. Approving
+// a UniPay withdrawal queues the gateway payout; approving a manual withdrawal
+// records that the administrator has already transferred the funds.
 func ReviewAffiliateWithdrawal(id string, reviewer int, approve bool) error {
 	return DB.Transaction(func(tx *gorm.DB) error {
 		var w AffiliateWithdrawal
@@ -321,19 +374,28 @@ func ReviewAffiliateWithdrawal(id string, reviewer int, approve bool) error {
 		if w.Status != WithdrawalPending {
 			return ErrWithdrawalState
 		}
+		snapshot, err := w.Snapshot()
+		if err != nil {
+			return err
+		}
 		if approve {
-			secrets, err := ReadWithdrawalSecrets(tx)
-			if err != nil {
-				return err
-			}
-			if !secrets.Config.Enabled || !operation_setting.IsPaymentComplianceConfirmed() {
-				return ErrWithdrawalUnavailable
-			}
 			var user User
 			if err := tx.Select("status").First(&user, w.UserID).Error; err != nil {
 				return err
 			}
 			if user.Status != common.UserStatusEnabled {
+				return ErrWithdrawalUnavailable
+			}
+		}
+		if approve && snapshot.PayoutMode() == WithdrawalModeManual {
+			w.Status = WithdrawalSucceeded
+			w.CompletedAt = time.Now().Unix()
+		} else if approve {
+			secrets, err := ReadWithdrawalSecrets(tx)
+			if err != nil {
+				return err
+			}
+			if !secrets.Config.Enabled || secrets.Config.Mode != WithdrawalModeUniPay || !operation_setting.IsPaymentComplianceConfirmed() {
 				return ErrWithdrawalUnavailable
 			}
 			w.Status = WithdrawalProcessing
@@ -424,7 +486,7 @@ func ListAffiliateWithdrawals(userID int, page int) ([]WithdrawalView, bool, err
 		if err != nil {
 			return nil, false, err
 		}
-		views = append(views, WithdrawalView{AffiliateWithdrawal: w, PayeeAccount: snapshot.Payout.PayeeAccount, PayeeName: snapshot.Payout.PayeeName})
+		views = append(views, WithdrawalView{AffiliateWithdrawal: w, Mode: snapshot.PayoutMode(), PayeeAccount: snapshot.Payout.PayeeAccount, PayeeName: snapshot.Payout.PayeeName, PayeeBank: snapshot.PayeeBank})
 	}
 	return views, more, nil
 }

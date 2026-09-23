@@ -81,6 +81,12 @@ export function WithdrawalHistory(props: { admin?: boolean }) {
     failed: t('Payout failed; rewards returned'),
     rejected: t('Rejected; rewards returned'),
   }
+  const payee = (row: Withdrawal) =>
+    [row.payee_bank, row.payee_account, row.payee_name]
+      .filter(Boolean)
+      .join(' · ')
+  const approveLabel = (row: Withdrawal) =>
+    row.mode === 'manual' ? t('Mark as paid') : t('Approve payout')
   const review = async () => {
     if (!selected || submitting.current) return
     submitting.current = true
@@ -90,7 +96,7 @@ export function WithdrawalHistory(props: { admin?: boolean }) {
       const proof = await verification.requestVerification({
         scope: 'withdrawal.review',
         context: { id: current.row.id, approve: current.approve },
-        description: `${current.row.payee_account} · ${current.row.payee_name} · CNY ${(current.row.amount_cents / 100).toFixed(2)}`,
+        description: `${payee(current.row)} · CNY ${(current.row.amount_cents / 100).toFixed(2)}`,
       })
       if (!proof) return
       await mutation.mutateAsync({
@@ -124,9 +130,7 @@ export function WithdrawalHistory(props: { admin?: boolean }) {
                 </span>
                 <Badge variant='secondary'>{labels[row.status]}</Badge>
               </div>
-              <p className='text-sm break-all'>
-                {row.payee_account} · {row.payee_name}
-              </p>
+              <p className='text-sm break-all'>{payee(row)}</p>
               <p className='text-muted-foreground text-xs break-all'>
                 {row.id} · {formatQuota(row.quota)}
                 {props.admin ? ` · ${t('User ID')}: ${row.user_id}` : ''}
@@ -143,7 +147,7 @@ export function WithdrawalHistory(props: { admin?: boolean }) {
                     disabled={busy}
                     onClick={() => setSelected({ row, approve: true })}
                   >
-                    {t('Approve payout')}
+                    {approveLabel(row)}
                   </Button>
                   <Button
                     size='sm'
@@ -189,11 +193,29 @@ export function WithdrawalHistory(props: { admin?: boolean }) {
         onOpenChange={(open) => {
           if (!open && !busy) setSelected(null)
         }}
-        title={selected?.approve ? t('Approve payout') : t('Reject withdrawal')}
+        title={
+          selected?.approve
+            ? approveLabel(selected.row)
+            : t('Reject withdrawal')
+        }
         desc={
-          selected
-            ? `${selected.row.payee_account} · ${selected.row.payee_name} · CNY ${(selected.row.amount_cents / 100).toFixed(2)}`
-            : ''
+          selected ? (
+            <div className='space-y-2'>
+              <span className='block break-all'>
+                {payee(selected.row)} · CNY{' '}
+                {(selected.row.amount_cents / 100).toFixed(2)}
+              </span>
+              {selected.approve && selected.row.mode === 'manual' && (
+                <span className='block'>
+                  {t(
+                    'Confirm only after you have transferred this amount to the account above.'
+                  )}
+                </span>
+              )}
+            </div>
+          ) : (
+            ''
+          )
         }
         isLoading={busy}
         handleConfirm={() => void review()}

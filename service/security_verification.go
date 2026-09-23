@@ -85,7 +85,7 @@ func BindVerificationOperation(operation VerificationOperation) (VerificationBin
 	switch operation.Scope {
 	case VerificationScopeWithdrawalCreate:
 		var context model.WithdrawalRequest
-		if len(fields) != 5 || common.Unmarshal(operation.Context, &context) != nil || !unipay.Identifier.MatchString(context.ID) || context.AmountCents <= 0 || context.AmountCents > unipay.MaxAmountCents || context.Quota <= 0 || context.Quota > common.MaxWalletQuota || !unipay.ValidText(context.PayeeAccount, 100) || !unipay.ValidText(context.PayeeName, 100) {
+		if len(fields) != 6 || common.Unmarshal(operation.Context, &context) != nil || !unipay.Identifier.MatchString(context.ID) || context.AmountCents <= 0 || context.AmountCents > unipay.MaxAmountCents || context.Quota <= 0 || context.Quota > common.MaxWalletQuota || !unipay.ValidText(context.PayeeAccount, 100) || !unipay.ValidText(context.PayeeName, 100) || (context.PayeeBank != "" && !unipay.ValidText(context.PayeeBank, 100)) {
 			return VerificationBinding{}, ErrVerificationContextInvalid
 		}
 		normalized = context

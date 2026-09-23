@@ -19,7 +19,7 @@ import (
 func withdrawalError(c *gin.Context, err error) {
 	// Never serialize DB/transport errors: they may contain encrypted records or payee data.
 	message := "Please try again later."
-	for _, known := range []error{model.ErrWithdrawalUnavailable, model.ErrWithdrawalInvalid, model.ErrWithdrawalFunds, model.ErrWithdrawalState, model.ErrWithdrawalMismatch, model.ErrWithdrawalStorageKey} {
+	for _, known := range []error{model.ErrWithdrawalUnavailable, model.ErrWithdrawalInvalid, model.ErrWithdrawalFunds, model.ErrWithdrawalState, model.ErrWithdrawalMismatch, model.ErrWithdrawalOutstanding, model.ErrWithdrawalStorageKey} {
 		if errors.Is(err, known) {
 			message = known.Error()
 			break
@@ -67,7 +67,7 @@ func PutWithdrawalConfig(c *gin.Context) {
 		withdrawalError(c, err)
 		return
 	}
-	recordManageAudit(c, "withdrawal.configure", map[string]interface{}{"enabled": config.Enabled})
+	recordManageAudit(c, "withdrawal.configure", map[string]any{"enabled": config.Enabled, "mode": config.Mode})
 	common.ApiSuccess(c, gin.H{})
 }
 func GetWithdrawalPolicy(c *gin.Context) {
@@ -77,7 +77,7 @@ func GetWithdrawalPolicy(c *gin.Context) {
 		return
 	}
 	config := secrets.Config
-	common.ApiSuccess(c, gin.H{"enabled": config.Enabled && operation_setting.IsPaymentComplianceConfirmed(), "min_cents": config.MinCents, "max_cents": config.MaxCents, "cny_per_unit": config.CNYPerUnit})
+	common.ApiSuccess(c, gin.H{"enabled": config.Enabled && operation_setting.IsPaymentComplianceConfirmed(), "mode": config.Mode, "min_cents": config.MinCents, "max_cents": config.MaxCents, "cny_per_unit": config.CNYPerUnit})
 }
 func QuoteWithdrawal(c *gin.Context) {
 	cents, err := strconv.ParseInt(c.Query("amount_cents"), 10, 64)

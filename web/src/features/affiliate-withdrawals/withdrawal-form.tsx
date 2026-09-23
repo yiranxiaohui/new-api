@@ -57,6 +57,7 @@ const schema = z.object({
     ),
   payee_account: z.string().trim().min(1).max(100),
   payee_name: z.string().trim().min(1).max(100),
+  payee_bank: z.string().trim().max(100),
 })
 type Values = z.infer<typeof schema>
 export function WithdrawalForm(props: {
@@ -79,8 +80,15 @@ export function WithdrawalForm(props: {
   })
   const form = useForm<Values>({
     resolver: zodResolver(schema),
-    defaultValues: { amount: '', payee_account: '', payee_name: '' },
+    defaultValues: {
+      amount: '',
+      payee_account: '',
+      payee_name: '',
+      payee_bank: '',
+    },
   })
+  const manual = props.policy.mode === 'manual'
+  const payeeBank = form.watch('payee_bank').trim()
   const cents = parseCNYCents(form.watch('amount'))
   const validAmount =
     cents !== null &&
@@ -103,7 +111,8 @@ export function WithdrawalForm(props: {
       !validAmount ||
       !enough ||
       quote.isFetching ||
-      !quote.data
+      !quote.data ||
+      (manual && values.payee_bank.trim() === '')
     ) {
       return
     }
@@ -116,12 +125,14 @@ export function WithdrawalForm(props: {
       quota: quote.data.quota,
       payee_account: values.payee_account,
       payee_name: values.payee_name,
+      // Only manual bank transfers carry a bank name.
+      payee_bank: manual ? values.payee_bank.trim() : '',
     }
     try {
       const proof = await verification.requestVerification({
         scope: 'withdrawal.create',
         context: input,
-        description: `${values.payee_account} · ${values.payee_name} · CNY ${(cents / 100).toFixed(2)} · ${formatQuota(input.quota)}`,
+        description: `${manual ? `${input.payee_bank} · ` : ''}${values.payee_account} · ${values.payee_name} · CNY ${(cents / 100).toFixed(2)} · ${formatQuota(input.quota)}`,
       })
       if (!proof) return
       await mutation.mutateAsync({ input, proof: proof.proof_token })
@@ -165,7 +176,9 @@ export function WithdrawalForm(props: {
               name='payee_account'
               render={({ field }) => (
                 <FormItem>
-                  <FormLabel>{t('Alipay account')}</FormLabel>
+                  <FormLabel>
+                    {manual ? t('Bank card number') : t('Alipay account')}
+                  </FormLabel>
                   <FormControl>
                     <Input {...field} maxLength={100} />
                   </FormControl>
@@ -186,6 +199,21 @@ export function WithdrawalForm(props: {
                 </FormItem>
               )}
             />
+            {manual && (
+              <FormField
+                control={form.control}
+                name='payee_bank'
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>{t('Bank and branch')}</FormLabel>
+                    <FormControl>
+                      <Input {...field} maxLength={100} />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+            )}
           </fieldset>
           <p className='text-muted-foreground text-sm'>
             {t(
@@ -218,7 +246,8 @@ export function WithdrawalForm(props: {
               cents === null ||
               !validAmount ||
               !enough ||
-              quote.isFetching
+              quote.isFetching ||
+              (manual && payeeBank === '')
             }
           >
             {t('Request withdrawal')}

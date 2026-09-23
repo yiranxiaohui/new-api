@@ -83,6 +83,7 @@ export async function withdrawalConfigDigest(config: WithdrawalConfig) {
   // Matches the server's canonical struct order; no credential enters a URL.
   const body = JSON.stringify({
     enabled: config.enabled,
+    mode: config.mode,
     gateway: config.gateway,
     pid: config.pid,
     api_key: config.api_key,
