@@ -38,7 +38,11 @@ func SetWebRouter(router *gin.Engine, assets WebAssets, pluginDispatcher gin.Han
 		middleware.Cache(),
 		static.Serve("/", frontendFS),
 		func(c *gin.Context) {
-			if strings.HasPrefix(c.Request.RequestURI, "/v1") || strings.HasPrefix(c.Request.RequestURI, "/api") || strings.HasPrefix(c.Request.RequestURI, "/assets") {
+			// Missing build assets (for example chunks from a previous release
+			// requested by a stale tab) must 404 instead of returning index.html,
+			// otherwise the browser executes HTML as JavaScript.
+			uri := c.Request.RequestURI
+			if strings.HasPrefix(uri, "/v1") || strings.HasPrefix(uri, "/api") || strings.HasPrefix(uri, "/assets") || strings.HasPrefix(uri, "/static/") {
 				controller.RelayNotFound(c)
 				return
 			}

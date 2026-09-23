@@ -17,9 +17,11 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 import { useNavigate, useRouter } from '@tanstack/react-router'
+import { useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 
 import { Button } from '@/components/ui/button'
+import { isChunkLoadError, reloadForStaleBuild } from '@/lib/stale-build'
 import { cn } from '@/lib/utils'
 
 const FEEDBACK_URL = 'https://github.com/QuantumNous/new-api/issues'
@@ -45,6 +47,12 @@ export function GeneralError({
   const { t } = useTranslation()
   const navigate = useNavigate()
   const { history } = useRouter()
+  const staleBuild = isChunkLoadError(error)
+  // Hide the error page while a stale tab reloads onto the current build.
+  const [reloading, setReloading] = useState(staleBuild)
+  useEffect(() => {
+    if (staleBuild && !reloadForStaleBuild()) setReloading(false)
+  }, [staleBuild])
   const status = getHttpStatus(error)
   const isRateLimited = status === 429
   const title = isRateLimited
@@ -53,6 +61,8 @@ export function GeneralError({
   const description = isRateLimited
     ? t('Please wait a moment before trying again.')
     : t('Please try again later.')
+
+  if (reloading) return null
 
   return (
     <div className={cn('h-svh w-full', className)}>
