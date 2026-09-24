@@ -41,6 +41,24 @@ func TestNormalizeClaudeSamplingForModel(t *testing.T) {
 		}
 	})
 
+	t.Run("opus-5 converts enabled thinking to adaptive and strips sampling", func(t *testing.T) {
+		req := &dto.ClaudeRequest{
+			Model:       "claude-opus-5-5",
+			Temperature: common.GetPointer[float64](0.7),
+			Thinking: &dto.Thinking{
+				Type:         "enabled",
+				BudgetTokens: common.GetPointer[int](31999),
+			},
+		}
+		NormalizeClaudeSamplingForModel(req)
+		if req.Temperature != nil {
+			t.Fatalf("temperature should be stripped")
+		}
+		if req.Thinking == nil || req.Thinking.Type != "adaptive" || req.Thinking.BudgetTokens != nil {
+			t.Fatalf("thinking not converted to adaptive: %+v", req.Thinking)
+		}
+	})
+
 	t.Run("adaptive thinking untouched", func(t *testing.T) {
 		req := &dto.ClaudeRequest{
 			Model:    "claude-opus-4-7",

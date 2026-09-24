@@ -7,13 +7,14 @@ import (
 )
 
 // claudeModelRejectsSampling 判断模型是否已移除采样参数。
-// Opus 4.7/4.8 及 Claude 5 家族(Fable/Sonnet/Mythos)起
+// Opus 4.7/4.8 及 Claude 5 家族(Opus/Fable/Sonnet/Mythos)起
 // temperature/top_p/top_k 一律返回 400
 // ("`temperature` is deprecated for this model"),
 // 且 thinking.type="enabled"(budget_tokens) 也已移除,仅支持 adaptive。
 func claudeModelRejectsSampling(model string) bool {
 	return strings.HasPrefix(model, "claude-opus-4-7") ||
 		strings.HasPrefix(model, "claude-opus-4-8") ||
+		strings.HasPrefix(model, "claude-opus-5") ||
 		strings.HasPrefix(model, "claude-fable") ||
 		strings.HasPrefix(model, "claude-sonnet-5") ||
 		strings.HasPrefix(model, "claude-mythos")
