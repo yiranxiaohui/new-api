@@ -31,6 +31,7 @@ import {
   sideDrawerFormClassName,
   sideDrawerHeaderClassName,
 } from '@/components/drawer-layout'
+import { JsonEditor } from '@/components/json-editor'
 import { Button } from '@/components/ui/button'
 import { Checkbox } from '@/components/ui/checkbox'
 import { Combobox } from '@/components/ui/combobox'
@@ -467,6 +468,36 @@ export function UsersMutateDrawer({
                         <FormDescription>
                           {t(
                             'Multiplied with group ratio for billing. Default 1 (no effect).'
+                          )}
+                        </FormDescription>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+
+                  <FormField
+                    control={form.control}
+                    name='group_ratios'
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>{t('User Group Ratios')}</FormLabel>
+                        <FormControl>
+                          <JsonEditor
+                            value={field.value ?? ''}
+                            onChange={field.onChange}
+                            valueType='number'
+                            keyLabel={t('Group')}
+                            valueLabel={t('Ratio')}
+                            keyPlaceholder={groups[0] ?? 'default'}
+                            valuePlaceholder='0.8'
+                            emptyMessage={t(
+                              'No group ratios set for this user. Regular group ratios apply.'
+                            )}
+                          />
+                        </FormControl>
+                        <FormDescription>
+                          {t(
+                            'Sets the final ratio of a group for this user only. It replaces the group ratio and is not multiplied by the user ratio. 0 makes the group free.'
                           )}
                         </FormDescription>
                         <FormMessage />

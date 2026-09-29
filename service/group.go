@@ -9,6 +9,7 @@ import (
 	"github.com/QuantumNous/new-api/model"
 	"github.com/QuantumNous/new-api/setting"
 	"github.com/QuantumNous/new-api/setting/ratio_setting"
+	hosttypes "github.com/QuantumNous/new-api/types"
 	"github.com/gin-gonic/gin"
 )
 
@@ -127,6 +128,38 @@ func GetGroupsEnabledModels(groups []string) []string {
 	return models
 }
 
+// ResolveGroupRatio 计算用户使用 usingGroup 分组时实际计费的分组倍率，计费与展示共用：
+//  1. 管理员为该用户单独设置的分组倍率（userGroupRatios）是最终值，不再叠加用户倍率；
+//  2. 否则取分组间特殊倍率（用户分组 → 使用分组），没有时取分组倍率，再乘以用户倍率。
+//
+// userRatio 为归一化后的用户倍率（未设置时为 1）。
+func ResolveGroupRatio(userGroup, usingGroup string, userRatio float64, userGroupRatios map[string]float64) hosttypes.GroupRatioInfo {
+	if ratio, ok := userGroupRatios[usingGroup]; ok {
+		return hosttypes.GroupRatioInfo{
+			GroupRatio:        ratio,
+			GroupSpecialRatio: ratio,
+			HasSpecialRatio:   true,
+		}
+	}
+
+	info := hosttypes.GroupRatioInfo{GroupSpecialRatio: -1}
+	if ratio, ok := ratio_setting.GetGroupGroupRatio(userGroup, usingGroup); ok {
+		info.GroupRatio = ratio
+		info.GroupSpecialRatio = ratio
+		info.HasSpecialRatio = true
+	} else {
+		info.GroupRatio = ratio_setting.GetGroupRatio(usingGroup)
+	}
+
+	if userRatio > 0 && userRatio != 1 {
+		info.GroupRatio *= userRatio
+		if info.HasSpecialRatio {
+			info.GroupSpecialRatio = info.GroupRatio
+		}
+	}
+	return info
+}
+
 // GetUserGroupRatio 获取用户使用某个分组的倍率
 // userGroup 用户分组
 // group 需要获取倍率的分组
@@ -138,13 +171,10 @@ func GetUserGroupRatio(userGroup, group string) float64 {
 	return ratio_setting.GetGroupRatio(group)
 }
 
-// ApplyUserRatio 将用户专属倍率叠加到分组倍率上，与计费路径
-// helper.HandleGroupRatio 的叠加方式保持一致，供展示端复用。
-// userRatio 为归一化后的用户倍率（未设置时为 1）。
-func ApplyUserRatio(groupRatio float64, userRatio float64) float64 {
-	if userRatio <= 0 || userRatio == 1 {
-		return groupRatio
-	}
+// GetUserEffectiveGroupRatio 返回用户使用某个分组时实际计费的分组倍率，
+// 规则与 ResolveGroupRatio 一致，供密钥管理、分组选择和模型广场展示。
+func GetUserEffectiveGroupRatio(userGroup, group string, userRatio float64, userGroupRatios map[string]float64) float64 {
+	ratio := ResolveGroupRatio(userGroup, group, userRatio, userGroupRatios).GroupRatio
 	// 浮点乘积会产生 1.2000000000000002 之类的尾数，展示前按 6 位小数收敛。
-	return math.Round(groupRatio*userRatio*1e6) / 1e6
+	return math.Round(ratio*1e6) / 1e6
 }

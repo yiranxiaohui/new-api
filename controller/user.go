@@ -19,6 +19,7 @@ import (
 	"github.com/QuantumNous/new-api/service/authz"
 	"github.com/QuantumNous/new-api/setting"
 	"github.com/QuantumNous/new-api/setting/operation_setting"
+	"github.com/QuantumNous/new-api/setting/ratio_setting"
 
 	"github.com/QuantumNous/new-api/constant"
 
@@ -669,6 +670,31 @@ func UpdateUser(c *gin.Context) {
 	if updatedUser.MaxConcurrency != nil && (*updatedUser.MaxConcurrency < -1 || *updatedUser.MaxConcurrency > setting.UserMaxConcurrencyCap) {
 		common.ApiErrorMsg(c, fmt.Sprintf("user max concurrency must be in [-1, %d]", setting.UserMaxConcurrencyCap))
 		return
+	}
+	if updatedUser.GroupRatios != nil {
+		ratios, err := ratio_setting.ParseUserGroupRatios(*updatedUser.GroupRatios)
+		if err != nil {
+			common.ApiErrorMsg(c, "invalid user group ratios: "+err.Error())
+			return
+		}
+		// Store a canonical JSON object so equal settings compare equal; an
+		// empty object clears every override.
+		normalized := ""
+		if len(ratios) > 0 {
+			for group := range ratios {
+				if !ratio_setting.ContainsGroupRatio(group) {
+					common.ApiErrorMsg(c, fmt.Sprintf("invalid user group ratios: group %s does not exist", group))
+					return
+				}
+			}
+			data, err := common.Marshal(ratios)
+			if err != nil {
+				common.ApiError(c, err)
+				return
+			}
+			normalized = string(data)
+		}
+		updatedUser.GroupRatios = &normalized
 	}
 	originUser, err := model.GetUserById(updatedUser.Id, false)
 	if err != nil {

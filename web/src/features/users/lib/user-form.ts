@@ -27,11 +27,41 @@ import { quotaUnitsToDollars } from '@/lib/format'
 import { ROLE } from '@/lib/roles'
 
 import { DEFAULT_GROUP } from '../constants'
-import { type UserFormData, type User } from '../types'
+import type { UserFormData, User } from '../types'
 
 // ============================================================================
 // Form Schema
 // ============================================================================
+
+/** Upper bound of a per-user group ratio, matching the backend. */
+const MAX_USER_GROUP_RATIO = 100
+
+/**
+ * Checks the per-user group ratio JSON edited in the drawer: empty, or an
+ * object mapping group names to ratios in [0, 100]. The backend repeats this
+ * validation and also rejects groups that do not exist.
+ */
+export function isValidUserGroupRatios(value: string | undefined): boolean {
+  const raw = value?.trim() ?? ''
+  if (raw === '') return true
+  let parsed: unknown
+  try {
+    parsed = JSON.parse(raw)
+  } catch {
+    return false
+  }
+  if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+    return false
+  }
+  return Object.entries(parsed).every(
+    ([group, ratio]) =>
+      group.trim() !== '' &&
+      group === group.trim() &&
+      typeof ratio === 'number' &&
+      ratio >= 0 &&
+      ratio <= MAX_USER_GROUP_RATIO
+  )
+}
 
 export const userFormSchema = z.object({
   username: z.string().min(1, 'Username is required'),
@@ -42,6 +72,13 @@ export const userFormSchema = z.object({
   group: z.string().optional(),
   remark: z.string().optional(),
   ratio: z.number().gt(0, 'Ratio must be greater than 0').max(100).optional(),
+  group_ratios: z
+    .string()
+    .optional()
+    .refine(
+      isValidUserGroupRatios,
+      'Each group ratio must be a number between 0 and 100'
+    ),
   max_concurrency: z
     .number()
     .int()
@@ -68,6 +105,7 @@ export const USER_FORM_DEFAULT_VALUES: UserFormValues = {
   group: DEFAULT_GROUP,
   remark: '',
   ratio: 1,
+  group_ratios: '',
   max_concurrency: 0,
   // Filled against the backend catalog at render time; see UsersMutateDrawer.
   admin_permissions: {},
@@ -111,6 +149,8 @@ export function transformFormDataToPayload(
     payload.group = data.group
     payload.remark = data.remark || undefined
     payload.ratio = data.ratio ?? 1
+    // "" clears every per-user group ratio on the backend.
+    payload.group_ratios = data.group_ratios?.trim() ?? ''
     payload.max_concurrency = data.max_concurrency ?? 0
     payload.id = userId
   }
@@ -133,6 +173,7 @@ export function transformUserToFormDefaults(user: User): UserFormValues {
     group: user.group || DEFAULT_GROUP,
     remark: user.remark || '',
     ratio: user.ratio && user.ratio > 0 ? user.ratio : 1,
+    group_ratios: user.group_ratios ?? '',
     max_concurrency: user.max_concurrency ?? 0,
     admin_permissions: user.admin_permissions ?? {},
   }

@@ -85,6 +85,7 @@ export function AppAuthorizationForm(props: AppAuthorizationFormProps) {
         desc: info.desc || key,
         ratio: info.ratio,
         baseRatio: info.base_ratio,
+        customRatio: info.custom_ratio === true,
       })),
     [groupsQuery.data]
   )

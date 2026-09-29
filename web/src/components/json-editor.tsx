@@ -107,7 +107,12 @@ export function JsonEditor({
 
         // Try to parse value based on type
         if (valueType === 'number') {
-          parsedValue = Number(parsedValue) || 0
+          // Keep blank or non-numeric input as text so form validation reports
+          // it instead of silently storing 0.
+          const numericValue = Number(parsedValue)
+          if (parsedValue !== '' && Number.isFinite(numericValue)) {
+            parsedValue = numericValue
+          }
         } else if (valueType === 'any') {
           // Try to parse as JSON first
           try {

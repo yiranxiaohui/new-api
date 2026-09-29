@@ -47,15 +47,11 @@ func GetPricing(c *gin.Context) {
 		user, err := model.GetUserCache(userId.(int))
 		if err == nil {
 			group = user.Group
+			// 展示的分组倍率与实际计费一致：应用分组倍率覆盖、分组间特殊倍率与用户专属倍率。
+			userRatio := user.GetRatio()
+			userGroupRatios := user.GetGroupRatios()
 			for g := range groupRatio {
-				ratio, ok := ratio_setting.GetGroupGroupRatio(group, g)
-				if ok {
-					groupRatio[g] = ratio
-				}
-			}
-			// 展示的分组倍率需要叠加用户专属倍率，否则与实际计费不一致。
-			for g, ratio := range groupRatio {
-				groupRatio[g] = service.ApplyUserRatio(ratio, user.GetRatio())
+				groupRatio[g] = service.GetUserEffectiveGroupRatio(group, g, userRatio, userGroupRatios)
 			}
 		}
 	}

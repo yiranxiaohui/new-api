@@ -48,12 +48,14 @@ import { DataTableRowActions } from './data-table-row-actions'
 type GroupRatioInfo = {
   ratios: Record<string, number | string>
   baseRatios: Record<string, number>
+  customRatioGroups: Set<string>
   userRatio: number
 }
 
 const EMPTY_GROUP_RATIOS: GroupRatioInfo = {
   ratios: {},
   baseRatios: {},
+  customRatioGroups: new Set(),
   userRatio: 1,
 }
 
@@ -66,6 +68,7 @@ function useGroupRatios(): GroupRatioInfo {
       if (!res.success || !res.data) return EMPTY_GROUP_RATIOS
       const ratios: Record<string, number | string> = {}
       const baseRatios: Record<string, number> = {}
+      const customRatioGroups = new Set<string>()
       for (const [group, info] of Object.entries(res.data)) {
         if (typeof info.ratio === 'number' || typeof info.ratio === 'string') {
           ratios[group] = info.ratio
@@ -73,10 +76,14 @@ function useGroupRatios(): GroupRatioInfo {
         if (typeof info.base_ratio === 'number') {
           baseRatios[group] = info.base_ratio
         }
+        if (info.custom_ratio) {
+          customRatioGroups.add(group)
+        }
       }
       return {
         ratios,
         baseRatios,
+        customRatioGroups,
         userRatio:
           typeof res.user_ratio === 'number' && res.user_ratio > 0
             ? res.user_ratio
@@ -181,6 +188,7 @@ export function useApiKeysColumns(now: number): ColumnDef<ApiKey>[] {
               ratio={groupRatios.ratios[group]}
               baseRatio={groupRatios.baseRatios[group]}
               userRatio={groupRatios.userRatio}
+              customRatio={groupRatios.customRatioGroups.has(group)}
               crossGroupRetry={apiKey.cross_group_retry}
               shouldReduceMotion={shouldReduceMotion}
             />

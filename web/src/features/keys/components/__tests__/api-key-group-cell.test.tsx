@@ -44,6 +44,9 @@ await i18n.use(initReactI18next).init({
 function CellHarness(props: {
   group: string
   ratio?: number | string
+  baseRatio?: number
+  userRatio?: number
+  customRatio?: boolean
   crossGroupRetry?: boolean
   shouldReduceMotion?: boolean
 }) {
@@ -53,6 +56,9 @@ function CellHarness(props: {
         <ApiKeyGroupCell
           group={props.group}
           ratio={props.ratio}
+          baseRatio={props.baseRatio}
+          userRatio={props.userRatio}
+          customRatio={props.customRatio}
           crossGroupRetry={props.crossGroupRetry ?? false}
           shouldReduceMotion={props.shouldReduceMotion ?? false}
         />
@@ -156,5 +162,36 @@ describe('API key group table cell', () => {
     expect(screen.getByText('vip')).toBeInTheDocument()
     expect(screen.queryByText('Auto')).not.toBeInTheDocument()
     expect(screen.queryByText('自动')).not.toBeInTheDocument()
+  })
+
+  test('explains an account-specific group ratio instead of the user ratio product', async () => {
+    render(
+      <CellHarness
+        group='vip'
+        ratio={0.5}
+        baseRatio={1.5}
+        userRatio={0.8}
+        customRatio
+      />
+    )
+    await userEvent.hover(screen.getByText('0.5x'))
+    expect(
+      await screen.findByText('Account-specific ratio set by an administrator')
+    ).toBeVisible()
+    expect(
+      screen.queryByText(/your user ratio/, {
+        selector: '[data-slot="tooltip-content"]',
+      })
+    ).not.toBeInTheDocument()
+  })
+
+  test('explains the user ratio product for a group without an account-specific ratio', async () => {
+    render(
+      <CellHarness group='vip' ratio={1.2} baseRatio={1.5} userRatio={0.8} />
+    )
+    await userEvent.hover(screen.getByText('1.2x'))
+    expect(
+      await screen.findByText('Group ratio 1.5x × your user ratio 0.8x = 1.2x')
+    ).toBeVisible()
   })
 })

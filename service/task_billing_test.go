@@ -1801,3 +1801,61 @@ func TestSettle_TokenRecalcFallsBackToCompletionTokens(t *testing.T) {
 		})
 	}
 }
+
+// Token recalculation must settle with the group ratio frozen at submission,
+// which already carries per-user group ratios and the user ratio; only legacy
+// tasks without a billing context fall back to the live group configuration.
+func TestSettle_TokenRecalcUsesSubmissionGroupRatio(t *testing.T) {
+	previousModelRatios := ratio_setting.ModelRatio2JSONString()
+	previousGroupRatios := ratio_setting.GroupRatio2JSONString()
+	require.NoError(t, ratio_setting.UpdateModelRatioByJSONString(`{"test-model":1}`))
+	require.NoError(t, ratio_setting.UpdateGroupRatioByJSONString(`{"default":2}`))
+	t.Cleanup(func() {
+		require.NoError(t, ratio_setting.UpdateModelRatioByJSONString(previousModelRatios))
+		require.NoError(t, ratio_setting.UpdateGroupRatioByJSONString(previousGroupRatios))
+	})
+
+	tests := []struct {
+		name           string
+		billingContext *model.TaskBillingContext
+		wantQuota      int
+	}{
+		{
+			name:           "frozen per-user group ratio",
+			billingContext: &model.TaskBillingContext{GroupRatio: 0.5, OriginModelName: "test-model"},
+			wantQuota:      40,
+		},
+		{
+			name:           "frozen zero ratio keeps the group free",
+			billingContext: &model.TaskBillingContext{GroupRatio: 0, OriginModelName: "test-model"},
+			wantQuota:      0,
+		},
+		{
+			name:      "legacy task without billing context uses live group ratio",
+			wantQuota: 160,
+		},
+	}
+
+	for _, testCase := range tests {
+		t.Run(testCase.name, func(t *testing.T) {
+			truncate(t)
+			const userID, tokenID, channelID = 36, 36, 36
+			const initialQuota, preConsumed, tokenRemain = 10_000, 50, 8_000
+			seedUser(t, userID, initialQuota)
+			seedToken(t, tokenID, userID, "sk-frozen-group-ratio", tokenRemain)
+			seedChannel(t, channelID)
+
+			task := makeTask(userID, channelID, preConsumed, tokenID, BillingSourceWallet, 0)
+			task.PrivateData.BillingContext = testCase.billingContext
+			settled := settleTaskBillingOnComplete(
+				context.Background(),
+				&mockAdaptor{},
+				task,
+				&relaycommon.TaskInfo{Status: model.TaskStatusSuccess, TotalTokens: 80},
+			)
+
+			assert.True(t, settled)
+			assert.Equal(t, testCase.wantQuota, task.Quota)
+		})
+	}
+}

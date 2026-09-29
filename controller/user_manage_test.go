@@ -18,6 +18,7 @@ import (
 	"github.com/QuantumNous/new-api/middleware"
 	"github.com/QuantumNous/new-api/model"
 	"github.com/QuantumNous/new-api/service/authz"
+	"github.com/QuantumNous/new-api/setting/ratio_setting"
 	"github.com/alicebob/miniredis/v2"
 	"github.com/go-redis/redis/v8"
 
@@ -605,4 +606,65 @@ func TestManageUserQuotaCacheUsesCommittedIntegerDifference(t *testing.T) {
 			}
 		})
 	}
+}
+
+func performUpdateUserRequest(t *testing.T, body string) *httptest.ResponseRecorder {
+	t.Helper()
+	gin.SetMode(gin.TestMode)
+	recorder := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(recorder)
+	c.Request = httptest.NewRequest(http.MethodPut, "/api/user/", strings.NewReader(body))
+	c.Request.Header.Set("Content-Type", "application/json")
+	c.Set("id", 9999)
+	c.Set("role", common.RoleAdminUser)
+	c.Set("username", "admin-operator")
+	c.Set(common.RequestIdKey, "group-ratio-test-request")
+	UpdateUser(c)
+	return recorder
+}
+
+func TestUpdateUserGroupRatiosValidatesAndNormalizes(t *testing.T) {
+	db := setupManageUserTestDB(t)
+	previousGroupRatios := ratio_setting.GroupRatio2JSONString()
+	require.NoError(t, ratio_setting.UpdateGroupRatioByJSONString(`{"default":1,"vip":1.5}`))
+	t.Cleanup(func() {
+		require.NoError(t, ratio_setting.UpdateGroupRatioByJSONString(previousGroupRatios))
+	})
+	user := model.User{
+		Username: "group-ratio-user", Password: "password", Role: common.RoleCommonUser,
+		Status: common.UserStatusEnabled, Group: "default", AuthVersion: 1, AffCode: "group-ratio-aff",
+	}
+	require.NoError(t, db.Create(&user).Error)
+	storedGroupRatios := func() string {
+		var stored model.User
+		require.NoError(t, db.First(&stored, user.Id).Error)
+		return stored.GetGroupRatiosJSON()
+	}
+	update := func(extra string) *httptest.ResponseRecorder {
+		return performUpdateUserRequest(t, fmt.Sprintf(`{"id":%d,"username":"group-ratio-user","group":"default"%s}`, user.Id, extra))
+	}
+
+	recorder := update(`,"group_ratios":"{ \"vip\": 0.80, \"default\": 0 }"`)
+	require.Contains(t, recorder.Body.String(), `"success":true`)
+	assert.Equal(t, `{"default":0,"vip":0.8}`, storedGroupRatios())
+
+	for _, invalid := range []string{
+		`,"group_ratios":"{\"missing\":0.5}"`,
+		`,"group_ratios":"{\"vip\":-1}"`,
+		`,"group_ratios":"{\"vip\":101}"`,
+		`,"group_ratios":"{\"vip\":null}"`,
+		`,"group_ratios":"not-json"`,
+	} {
+		recorder = update(invalid)
+		assert.Contains(t, recorder.Body.String(), `"success":false`, invalid)
+		assert.Equal(t, `{"default":0,"vip":0.8}`, storedGroupRatios(), invalid)
+	}
+
+	recorder = update(``)
+	require.Contains(t, recorder.Body.String(), `"success":true`)
+	assert.Equal(t, `{"default":0,"vip":0.8}`, storedGroupRatios(), "omitted group_ratios keeps overrides")
+
+	recorder = update(`,"group_ratios":"{}"`)
+	require.Contains(t, recorder.Body.String(), `"success":true`)
+	assert.Equal(t, "", storedGroupRatios(), "empty object clears overrides")
 }

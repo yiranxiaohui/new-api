@@ -57,3 +57,61 @@ func TestUserCacheRoundTripsNilRatioAsNeutral(t *testing.T) {
 	assert.Nil(t, cached.Ratio)
 	assert.InDelta(t, 1.0, cached.GetRatio(), 1e-9)
 }
+
+// Per-user group ratios must survive the Redis user cache round trip and be
+// refreshed by an administrator edit, otherwise billing would keep charging
+// the regular group ratio until the cached hash expires.
+func TestUserCacheRoundTripsGroupRatiosAcrossEdits(t *testing.T) {
+	truncateTables(t)
+	useUserCacheMiniRedis(t)
+
+	initial := `{"vip":0.5}`
+	user := User{
+		Username:    "group-ratio-cache",
+		Password:    "password",
+		Role:        common.RoleCommonUser,
+		Status:      common.UserStatusEnabled,
+		Group:       "default",
+		GroupRatios: &initial,
+		AuthVersion: 1,
+	}
+	require.NoError(t, DB.Create(&user).Error)
+	require.NoError(t, populateUserCache(user))
+
+	cached, err := cacheGetUserBase(user.Id)
+	require.NoError(t, err)
+	assert.Equal(t, map[string]float64{"vip": 0.5}, cached.GetGroupRatios())
+
+	// Omitting group_ratios in an edit keeps the stored overrides.
+	edit := User{Id: user.Id, Username: user.Username, Group: "default"}
+	require.NoError(t, edit.Edit(false))
+	cached, err = cacheGetUserBase(user.Id)
+	require.NoError(t, err)
+	assert.Equal(t, map[string]float64{"vip": 0.5}, cached.GetGroupRatios())
+
+	updated := `{"default":0,"vip":0.8}`
+	edit = User{Id: user.Id, Username: user.Username, Group: "default", GroupRatios: &updated}
+	require.NoError(t, edit.Edit(false))
+	cached, err = cacheGetUserBase(user.Id)
+	require.NoError(t, err)
+	assert.Equal(t, map[string]float64{"default": 0, "vip": 0.8}, cached.GetGroupRatios())
+
+	cleared := ""
+	edit = User{Id: user.Id, Username: user.Username, Group: "default", GroupRatios: &cleared}
+	require.NoError(t, edit.Edit(false))
+	cached, err = cacheGetUserBase(user.Id)
+	require.NoError(t, err)
+	assert.Empty(t, cached.GetGroupRatios())
+
+	stored, err := GetUserById(user.Id, false)
+	require.NoError(t, err)
+	assert.Equal(t, "", stored.GetGroupRatiosJSON())
+}
+
+// A stored value that no longer parses must not break authentication or
+// billing; it is ignored so the regular group ratios apply.
+func TestUserGroupRatiosIgnoreInvalidStoredValue(t *testing.T) {
+	for _, raw := range []string{`not-json`, `{"vip":-1}`, `{"vip":null}`, `{"vip":101}`} {
+		assert.Nil(t, (&UserBase{GroupRatios: raw}).GetGroupRatios(), raw)
+	}
+}

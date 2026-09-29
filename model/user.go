@@ -98,8 +98,9 @@ type User struct {
 	UsedQuota            int                        `json:"used_quota" gorm:"type:int;default:0;column:used_quota"` // used quota
 	RequestCount         int                        `json:"request_count" gorm:"type:int;default:0;"`               // request number
 	Group                string                     `json:"group" gorm:"type:varchar(64);default:'default'"`
-	Ratio                *float64                   `json:"ratio,omitempty" gorm:"column:ratio"`                     // per-user billing ratio, nil/<=0 means 1.0
-	MaxConcurrency       *int                       `json:"max_concurrency,omitempty" gorm:"column:max_concurrency"` // per-user in-flight request limit: nil/0 follow global, -1 unlimited, >0 override
+	Ratio                *float64                   `json:"ratio,omitempty" gorm:"column:ratio"`                         // per-user billing ratio, nil/<=0 means 1.0
+	GroupRatios          *string                    `json:"group_ratios,omitempty" gorm:"type:text;column:group_ratios"` // per-user group ratio overrides as a JSON object, e.g. {"vip":0.8}; empty means none
+	MaxConcurrency       *int                       `json:"max_concurrency,omitempty" gorm:"column:max_concurrency"`     // per-user in-flight request limit: nil/0 follow global, -1 unlimited, >0 override
 	AffCode              string                     `json:"aff_code" gorm:"type:varchar(32);column:aff_code;uniqueIndex"`
 	AffCount             int                        `json:"aff_count" gorm:"type:int;default:0;column:aff_count"`
 	AffQuota             int                        `json:"aff_quota" gorm:"type:int;default:0;column:aff_quota"`           // 邀请剩余额度
@@ -127,6 +128,7 @@ func (user *User) ToBaseUser() *UserBase {
 		Setting:        user.Setting,
 		Email:          user.Email,
 		Ratio:          user.Ratio,
+		GroupRatios:    user.GetGroupRatiosJSON(),
 		MaxConcurrency: user.MaxConcurrency,
 		AuthVersion:    user.AuthVersion,
 		CacheSchema:    userCacheSchemaVersion,
@@ -141,6 +143,15 @@ func (user *User) GetRatio() float64 {
 		return 1.0
 	}
 	return *user.Ratio
+}
+
+// GetGroupRatiosJSON returns the stored per-user group ratio overrides, or ""
+// when none are configured.
+func (user *User) GetGroupRatiosJSON() string {
+	if user.GroupRatios == nil {
+		return ""
+	}
+	return *user.GroupRatios
 }
 
 func (user *User) GetAccessToken() string {
@@ -912,6 +923,9 @@ func (user *User) EditWithTx(tx *gorm.DB, updatePassword bool) error {
 	}
 	if newUser.Ratio != nil {
 		updates["ratio"] = *newUser.Ratio
+	}
+	if newUser.GroupRatios != nil {
+		updates["group_ratios"] = *newUser.GroupRatios
 	}
 	if newUser.MaxConcurrency != nil {
 		updates["max_concurrency"] = *newUser.MaxConcurrency

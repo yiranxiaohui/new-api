@@ -7,6 +7,7 @@ import (
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/constant"
 	"github.com/QuantumNous/new-api/relaykit/dto"
+	"github.com/QuantumNous/new-api/setting/ratio_setting"
 
 	"github.com/gin-gonic/gin"
 )
@@ -23,6 +24,7 @@ type UserBase struct {
 	Username       string   `json:"username"`
 	Setting        string   `json:"setting"`
 	Ratio          *float64 `json:"ratio,omitempty"`
+	GroupRatios    string   `json:"group_ratios,omitempty"`
 	MaxConcurrency *int     `json:"max_concurrency,omitempty"`
 	AuthVersion    int64    `json:"-"`
 	CacheSchema    int      `json:"-"`
@@ -36,6 +38,7 @@ func (user *UserBase) WriteContext(c *gin.Context) {
 	common.SetContextKey(c, constant.ContextKeyUserName, user.Username)
 	common.SetContextKey(c, constant.ContextKeyUserSetting, user.GetSetting())
 	common.SetContextKey(c, constant.ContextKeyUserRatio, user.GetRatio())
+	common.SetContextKey(c, constant.ContextKeyUserGroupRatios, user.GetGroupRatios())
 	common.SetContextKey(c, constant.ContextKeyUserMaxConcurrency, user.GetMaxConcurrency())
 }
 
@@ -53,6 +56,18 @@ func (user *UserBase) GetRatio() float64 {
 		return 1.0
 	}
 	return *user.Ratio
+}
+
+// GetGroupRatios returns the administrator-assigned per-user group ratio
+// overrides. Stored values are validated on save; an unreadable value is
+// logged and ignored so billing falls back to the regular group ratios.
+func (user *UserBase) GetGroupRatios() map[string]float64 {
+	ratios, err := ratio_setting.ParseUserGroupRatios(user.GroupRatios)
+	if err != nil {
+		common.SysError(fmt.Sprintf("invalid group ratios of user %d: %s", user.Id, err.Error()))
+		return nil
+	}
+	return ratios
 }
 
 func (user *UserBase) GetSetting() dto.UserSetting {

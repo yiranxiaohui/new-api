@@ -37,6 +37,8 @@ type ApiKeyGroupCellProps = {
   ratio?: GroupRatio
   baseRatio?: number
   userRatio?: number
+  /** The group ratio is an administrator-assigned ratio for this account. */
+  customRatio?: boolean
   shouldReduceMotion: boolean
 }
 
@@ -53,25 +55,27 @@ export function ApiKeyGroupCell(props: ApiKeyGroupCellProps) {
   if (group !== 'auto') {
     const ratio =
       group && typeof props.ratio === 'number' ? props.ratio : undefined
-    if (hasUserRatio && ratio !== undefined) {
+    let ratioExplanation: string | undefined
+    if (ratio !== undefined && props.customRatio) {
+      ratioExplanation = t('Account-specific ratio set by an administrator')
+    } else if (ratio !== undefined && hasUserRatio) {
+      ratioExplanation =
+        typeof props.baseRatio === 'number'
+          ? t(
+              'Group ratio {{group}}x × your user ratio {{user}}x = {{effective}}x',
+              {
+                group: props.baseRatio,
+                user: props.userRatio,
+                effective: ratio,
+              }
+            )
+          : t('Includes your user ratio {{user}}x', {
+              user: props.userRatio,
+            })
+    }
+    if (ratioExplanation) {
       return (
-        <TruncatedCell
-          className='-ml-1.5'
-          tooltipContent={
-            typeof props.baseRatio === 'number'
-              ? t(
-                  'Group ratio {{group}}x × your user ratio {{user}}x = {{effective}}x',
-                  {
-                    group: props.baseRatio,
-                    user: props.userRatio,
-                    effective: ratio,
-                  }
-                )
-              : t('Includes your user ratio {{user}}x', {
-                  user: props.userRatio,
-                })
-          }
-        >
+        <TruncatedCell className='-ml-1.5' tooltipContent={ratioExplanation}>
           <GroupBadge group={props.group} ratio={ratio} />
         </TruncatedCell>
       )
