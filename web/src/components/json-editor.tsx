@@ -22,6 +22,7 @@ import { useTranslation } from 'react-i18next'
 
 import { JsonCodeEditor } from '@/components/json-code-editor'
 import { Button } from '@/components/ui/button'
+import { Combobox } from '@/components/ui/combobox'
 import { Input } from '@/components/ui/input'
 
 type JsonEditorProps = {
@@ -35,6 +36,11 @@ type JsonEditorProps = {
   emptyMessage?: string
   template?: Record<string, unknown>
   valueType?: 'string' | 'number' | 'any'
+  /**
+   * When provided, keys are picked from these values in a dropdown instead of
+   * typed freely. A key already used by another row is not offered again.
+   */
+  keyOptions?: readonly string[]
 }
 
 type EditorRow = {
@@ -60,6 +66,23 @@ function parseJsonRows(json: string): EditorRow[] {
   }
 }
 
+/**
+ * Dropdown options for one row: every allowed key not used by another row,
+ * plus the row's own key when it is no longer allowed so it stays visible.
+ */
+function getRowKeyOptions(
+  keyOptions: readonly string[],
+  rows: EditorRow[],
+  row: EditorRow
+): { value: string; label: string }[] {
+  const usedByOthers = new Set(
+    rows.filter((other) => other.id !== row.id).map((other) => other.key)
+  )
+  const keys = keyOptions.filter((key) => !usedByOthers.has(key))
+  if (row.key && !keys.includes(row.key)) keys.unshift(row.key)
+  return keys.map((key) => ({ value: key, label: key }))
+}
+
 export function JsonEditor({
   value,
   onChange,
@@ -71,6 +94,7 @@ export function JsonEditor({
   emptyMessage,
   template,
   valueType = 'string',
+  keyOptions,
 }: JsonEditorProps) {
   const { t } = useTranslation()
   const resolvedEmptyMessage =
@@ -241,14 +265,27 @@ export function JsonEditor({
                   key={row.id}
                   className='grid grid-cols-[1fr_1fr_auto] gap-2'
                 >
-                  <Input
-                    value={row.key}
-                    onChange={(e) =>
-                      handleRowChange(row.id, 'key', e.target.value)
-                    }
-                    placeholder={resolvedKeyPlaceholder}
-                    disabled={disabled}
-                  />
+                  {keyOptions ? (
+                    <Combobox
+                      options={getRowKeyOptions(keyOptions, rows, row)}
+                      value={row.key}
+                      onValueChange={(key) =>
+                        handleRowChange(row.id, 'key', key ?? '')
+                      }
+                      placeholder={resolvedKeyPlaceholder}
+                      aria-label={resolvedKeyLabel}
+                      disabled={disabled}
+                    />
+                  ) : (
+                    <Input
+                      value={row.key}
+                      onChange={(e) =>
+                        handleRowChange(row.id, 'key', e.target.value)
+                      }
+                      placeholder={resolvedKeyPlaceholder}
+                      disabled={disabled}
+                    />
+                  )}
                   <Input
                     value={row.value}
                     onChange={(e) =>
