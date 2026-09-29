@@ -486,9 +486,10 @@ export function UsersMutateDrawer({
                             value={field.value ?? ''}
                             onChange={field.onChange}
                             valueType='number'
+                            keyOptions={groups}
                             keyLabel={t('Group')}
                             valueLabel={t('Ratio')}
-                            keyPlaceholder={groups[0] ?? 'default'}
+                            keyPlaceholder={t('Select a group')}
                             valuePlaceholder='0.8'
                             emptyMessage={t(
                               'No group ratios set for this user. Regular group ratios apply.'

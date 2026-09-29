@@ -65,3 +65,59 @@ describe('JsonEditor number values', () => {
     expect(JSON.parse(onChange.mock.lastCall?.[0])).toEqual({ vip: 0 })
   })
 })
+
+describe('JsonEditor key options', () => {
+  test('picks a key from the dropdown instead of a free-text input', async () => {
+    const onChange = vi.fn()
+    const user = userEvent.setup()
+    render(
+      <JsonEditor
+        value='{"":1}'
+        onChange={onChange}
+        valueType='number'
+        keyLabel='Group'
+        keyOptions={['default', 'vip']}
+      />
+    )
+
+    await user.click(screen.getByRole('combobox', { name: 'Group' }))
+    await user.click(screen.getByRole('option', { name: 'vip' }))
+
+    expect(JSON.parse(onChange.mock.lastCall?.[0])).toEqual({ vip: 1 })
+  })
+
+  test('does not offer a key already used by another row', async () => {
+    const user = userEvent.setup()
+    render(
+      <JsonEditor
+        value='{"vip":0.8,"":1}'
+        onChange={vi.fn()}
+        keyLabel='Group'
+        keyOptions={['default', 'vip']}
+      />
+    )
+
+    const [, emptyRow] = screen.getAllByRole('combobox', { name: 'Group' })
+    await user.click(emptyRow)
+
+    expect(screen.getByRole('option', { name: 'default' })).toBeVisible()
+    expect(
+      screen.queryByRole('option', { name: 'vip' })
+    ).not.toBeInTheDocument()
+  })
+
+  test('keeps showing a stored key that is no longer an allowed option', () => {
+    render(
+      <JsonEditor
+        value='{"removed-group":0.5}'
+        onChange={vi.fn()}
+        keyLabel='Group'
+        keyOptions={['default']}
+      />
+    )
+
+    expect(screen.getByRole('combobox', { name: 'Group' })).toHaveValue(
+      'removed-group'
+    )
+  })
+})
