@@ -49,6 +49,8 @@ export type ApiKeyGroupOption = {
   desc?: string
   ratio?: number | string
   baseRatio?: number
+  /** The ratio is an administrator-assigned ratio for this account. */
+  customRatio?: boolean
 }
 
 type ApiKeyGroupComboboxProps = {
@@ -137,6 +139,7 @@ export function ApiKeyGroupCombobox({
             <GroupRatioBadge
               ratio={selectedOption?.ratio}
               baseRatio={selectedOption?.baseRatio}
+              customRatio={selectedOption?.customRatio}
               userRatio={userRatio}
               isAuto={isAutoSelected}
               shouldReduceMotion={shouldReduceMotion}
@@ -206,6 +209,7 @@ export function ApiKeyGroupCombobox({
                     <GroupRatioBadge
                       ratio={option.ratio}
                       baseRatio={option.baseRatio}
+                      customRatio={option.customRatio}
                       userRatio={userRatio}
                       isAuto={isAutoOption}
                       shouldReduceMotion={shouldReduceMotion}

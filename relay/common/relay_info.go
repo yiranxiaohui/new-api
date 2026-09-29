@@ -125,8 +125,11 @@ type RelayInfo struct {
 	UserEmail           string
 	UserQuota           int
 	UserRatio           float64
-	RelayFormat         types.RelayFormat
-	SendResponseCount   int
+	// UserGroupRatios holds administrator-assigned per-user group ratios keyed
+	// by using group; a match is the final group ratio used for billing.
+	UserGroupRatios   map[string]float64
+	RelayFormat       types.RelayFormat
+	SendResponseCount int
 	// ClaudeToChatStreamState / ChatToGeminiStreamState hold per-attempt
 	// stream converters. InitChannelMeta nils them so a retry cannot resume a
 	// dirty converter (advanced tool index / finalized).
@@ -646,6 +649,9 @@ func genBaseRelayInfo(c *gin.Context, request dto.Request) *RelayInfo {
 
 	if userRatio, ok := common.GetContextKeyType[float64](c, constant.ContextKeyUserRatio); ok && userRatio > 0 {
 		info.UserRatio = userRatio
+	}
+	if userGroupRatios, ok := common.GetContextKeyType[map[string]float64](c, constant.ContextKeyUserGroupRatios); ok {
+		info.UserGroupRatios = userGroupRatios
 	}
 
 	return info

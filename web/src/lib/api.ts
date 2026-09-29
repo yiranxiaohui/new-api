@@ -62,7 +62,13 @@ export async function getUserGroups(): Promise<{
   message?: string
   data?: Record<
     string,
-    { desc: string; ratio: number | string; base_ratio?: number }
+    {
+      desc: string
+      ratio: number | string
+      base_ratio?: number
+      /** The ratio is an administrator-assigned ratio for this account. */
+      custom_ratio?: boolean
+    }
   >
   /** Per-user billing ratio already multiplied into each group ratio above. */
   user_ratio?: number

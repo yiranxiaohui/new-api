@@ -12,6 +12,7 @@ import (
 	"github.com/QuantumNous/new-api/relaykit/dto"
 	"github.com/QuantumNous/new-api/relaykit/relayconvert/reasoning"
 	"github.com/QuantumNous/new-api/relaykit/types"
+	"github.com/QuantumNous/new-api/service"
 	"github.com/QuantumNous/new-api/setting/billing_setting"
 	"github.com/QuantumNous/new-api/setting/operation_setting"
 	"github.com/QuantumNous/new-api/setting/ratio_setting"
@@ -41,11 +42,6 @@ const claudeCacheCreation1hMultiplier = 6 / 3.75
 
 // HandleGroupRatio checks for "auto_group" in the context and updates the group ratio and relayInfo.UsingGroup if present
 func HandleGroupRatio(ctx *gin.Context, relayInfo *relaycommon.RelayInfo) hosttypes.GroupRatioInfo {
-	groupRatioInfo := hosttypes.GroupRatioInfo{
-		GroupRatio:        1.0, // default ratio
-		GroupSpecialRatio: -1,
-	}
-
 	// check auto group
 	autoGroup, exists := ctx.Get("auto_group")
 	if exists {
@@ -53,27 +49,8 @@ func HandleGroupRatio(ctx *gin.Context, relayInfo *relaycommon.RelayInfo) hostty
 		relayInfo.UsingGroup = autoGroup.(string)
 	}
 
-	// check user group special ratio
-	userGroupRatio, ok := ratio_setting.GetGroupGroupRatio(relayInfo.UserGroup, relayInfo.UsingGroup)
-	if ok {
-		// user group special ratio
-		groupRatioInfo.GroupSpecialRatio = userGroupRatio
-		groupRatioInfo.GroupRatio = userGroupRatio
-		groupRatioInfo.HasSpecialRatio = true
-	} else {
-		// normal group ratio
-		groupRatioInfo.GroupRatio = ratio_setting.GetGroupRatio(relayInfo.UsingGroup)
-	}
-
-	// apply per-user billing ratio on top of the group-level ratio
-	if relayInfo.UserRatio > 0 && relayInfo.UserRatio != 1 {
-		groupRatioInfo.GroupRatio *= relayInfo.UserRatio
-		if groupRatioInfo.HasSpecialRatio {
-			groupRatioInfo.GroupSpecialRatio = groupRatioInfo.GroupRatio
-		}
-	}
-
-	return groupRatioInfo
+	// per-user group ratio > group-group special ratio > group ratio, see service.ResolveGroupRatio
+	return service.ResolveGroupRatio(relayInfo.UserGroup, relayInfo.UsingGroup, relayInfo.UserRatio, relayInfo.UserGroupRatios)
 }
 
 func ModelPriceHelper(c *gin.Context, info *relaycommon.RelayInfo, promptTokens int, meta *types.TokenCountMeta) (hosttypes.PriceData, error) {

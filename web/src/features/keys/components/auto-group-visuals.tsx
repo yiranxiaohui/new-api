@@ -83,6 +83,8 @@ type GroupRatioBadgeProps = {
   baseRatio?: number
   /** Per-user billing ratio; values other than 1 are explained in a tooltip. */
   userRatio?: number
+  /** The ratio is an administrator-assigned ratio for this account only. */
+  customRatio?: boolean
   shouldReduceMotion?: boolean
 }
 
@@ -110,11 +112,27 @@ export function GroupRatioBadge(props: GroupRatioBadgeProps) {
       )}
     </GroupMultiplierBadge>
   )
-  if (
-    typeof props.userRatio !== 'number' ||
-    props.userRatio <= 0 ||
-    props.userRatio === 1
+  let explanation: string | undefined
+  if (props.customRatio && typeof props.ratio === 'number') {
+    explanation = t('Account-specific ratio set by an administrator')
+  } else if (
+    typeof props.userRatio === 'number' &&
+    props.userRatio > 0 &&
+    props.userRatio !== 1
   ) {
+    explanation =
+      typeof props.baseRatio === 'number' && typeof props.ratio === 'number'
+        ? t(
+            'Group ratio {{group}}x × your user ratio {{user}}x = {{effective}}x',
+            {
+              group: props.baseRatio,
+              user: props.userRatio,
+              effective: props.ratio,
+            }
+          )
+        : t('Includes your user ratio {{user}}x', { user: props.userRatio })
+  }
+  if (!explanation) {
     return badge
   }
   return (
@@ -122,18 +140,7 @@ export function GroupRatioBadge(props: GroupRatioBadgeProps) {
       <TooltipTrigger render={<span className='inline-flex max-w-full' />}>
         {badge}
       </TooltipTrigger>
-      <TooltipContent className='text-xs'>
-        {typeof props.baseRatio === 'number' && typeof props.ratio === 'number'
-          ? t(
-              'Group ratio {{group}}x × your user ratio {{user}}x = {{effective}}x',
-              {
-                group: props.baseRatio,
-                user: props.userRatio,
-                effective: props.ratio,
-              }
-            )
-          : t('Includes your user ratio {{user}}x', { user: props.userRatio })}
-      </TooltipContent>
+      <TooltipContent className='text-xs'>{explanation}</TooltipContent>
     </Tooltip>
   )
 }

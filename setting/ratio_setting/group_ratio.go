@@ -3,6 +3,8 @@ package ratio_setting
 import (
 	"encoding/json"
 	"errors"
+	"fmt"
+	"strings"
 
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/setting/config"
@@ -103,6 +105,36 @@ func GroupGroupRatio2JSONString() string {
 
 func UpdateGroupGroupRatioByJSONString(jsonStr string) error {
 	return types.LoadFromJsonString(groupGroupRatioMap, jsonStr)
+}
+
+// MaxUserGroupRatio bounds an administrator-assigned per-user group ratio,
+// matching the upper bound of the per-user billing ratio.
+const MaxUserGroupRatio = 100.0
+
+// ParseUserGroupRatios decodes a user's per-group ratio overrides, stored as a
+// JSON object such as {"vip":0.8}. An empty value means no overrides. Every
+// ratio must lie in [0, MaxUserGroupRatio]; 0 makes the group free for the user.
+func ParseUserGroupRatios(raw string) (map[string]float64, error) {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return nil, nil
+	}
+	decoded := make(map[string]*float64)
+	if err := common.UnmarshalJsonStr(raw, &decoded); err != nil {
+		return nil, err
+	}
+	ratios := make(map[string]float64, len(decoded))
+	for group, ratio := range decoded {
+		if group == "" || group != strings.TrimSpace(group) {
+			return nil, fmt.Errorf("invalid group name %q", group)
+		}
+		// A JSON null must not silently become a free (0) ratio.
+		if ratio == nil || !(*ratio >= 0 && *ratio <= MaxUserGroupRatio) {
+			return nil, fmt.Errorf("ratio of group %s must be in [0, %g]", group, MaxUserGroupRatio)
+		}
+		ratios[group] = *ratio
+	}
+	return ratios, nil
 }
 
 func CheckGroupRatio(jsonStr string) error {

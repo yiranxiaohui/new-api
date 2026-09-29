@@ -167,6 +167,7 @@ export function ApiKeysMutateDrawer({
         desc: info.desc || key,
         ratio: info.ratio,
         baseRatio: info.base_ratio,
+        customRatio: info.custom_ratio === true,
       })),
     [groupsData]
   )
