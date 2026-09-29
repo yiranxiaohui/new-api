@@ -282,10 +282,24 @@ func AddToken(c *gin.Context) {
 		common.ApiError(c, err)
 		return
 	}
+	if _, ok := createUserToken(c, request); !ok {
+		return
+	}
+	common.SetContextKey(c, constant.ContextKeyTokenAuditSucceeded, true)
+	c.JSON(http.StatusOK, gin.H{
+		"success": true,
+		"message": "",
+	})
+}
+
+// createUserToken validates a token request for the authenticated user and
+// stores a new token with a freshly generated key. On failure it writes the
+// error response and returns false.
+func createUserToken(c *gin.Context, request tokenRequest) (*model.Token, bool) {
 	token := request.Token
 	if len(token.Name) > 50 {
 		common.ApiErrorI18n(c, i18n.MsgTokenNameTooLong)
-		return
+		return nil, false
 	}
 	params := tokenAuditParams(c)
 	params["name"] = token.Name
@@ -293,12 +307,12 @@ func AddToken(c *gin.Context) {
 	if !token.UnlimitedQuota {
 		if token.RemainQuota < 0 {
 			common.ApiErrorI18n(c, i18n.MsgTokenQuotaNegative)
-			return
+			return nil, false
 		}
 		maxQuotaValue := maxTokenQuota()
 		if token.RemainQuota > maxQuotaValue {
 			common.ApiErrorI18n(c, i18n.MsgTokenQuotaExceedMax, map[string]any{"Max": maxQuotaValue})
-			return
+			return nil, false
 		}
 	}
 	// 检查用户令牌数量是否已达上限
@@ -306,18 +320,18 @@ func AddToken(c *gin.Context) {
 	count, err := model.CountUserTokens(c.GetInt("id"))
 	if err != nil {
 		common.ApiError(c, err)
-		return
+		return nil, false
 	}
 	if int(count) >= maxTokens {
 		c.JSON(http.StatusOK, gin.H{
 			"success": false,
 			"message": fmt.Sprintf("已达到最大令牌数量限制 (%d)", maxTokens),
 		})
-		return
+		return nil, false
 	}
 	if token.Group == "auto" {
 		if !setTokenAutoGroups(c, &token, request.AutoGroups.Groups) {
-			return
+			return nil, false
 		}
 	} else {
 		token.CrossGroupRetry = false
@@ -327,7 +341,7 @@ func AddToken(c *gin.Context) {
 	if err != nil {
 		common.ApiErrorI18n(c, i18n.MsgTokenGenerateFailed)
 		common.SysLog("failed to generate token key: " + err.Error())
-		return
+		return nil, false
 	}
 	cleanToken := model.Token{
 		UserId:             c.GetInt("id"),
@@ -348,14 +362,10 @@ func AddToken(c *gin.Context) {
 	err = cleanToken.Insert()
 	if err != nil {
 		common.ApiError(c, err)
-		return
+		return nil, false
 	}
 	params["id"] = cleanToken.Id
-	common.SetContextKey(c, constant.ContextKeyTokenAuditSucceeded, true)
-	c.JSON(http.StatusOK, gin.H{
-		"success": true,
-		"message": "",
-	})
+	return &cleanToken, true
 }
 
 func DeleteToken(c *gin.Context) {

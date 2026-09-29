@@ -62,6 +62,10 @@ var MaxRecentItems = 1000
 var PasswordLoginEnabled = true
 var PasswordLoginEncryptionEnabled = false
 var PasswordRegisterEnabled = true
+
+// AppAuthorizationEnabled lets native apps request an API token through the
+// browser consent page (/app-auth) instead of asking for account credentials.
+var AppAuthorizationEnabled = false
 var EmailVerificationEnabled = false
 var GitHubOAuthEnabled = false
 var LinuxDOOAuthEnabled = false

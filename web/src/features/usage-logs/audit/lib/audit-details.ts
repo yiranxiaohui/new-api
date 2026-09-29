@@ -57,6 +57,10 @@ const TOKEN_AUDIT_OPERATIONS: Record<
     labelKey: 'View API token key',
     namedKey: 'View key for API token “{{name}}”',
   },
+  'token.app_authorize': {
+    labelKey: 'Authorize app API token',
+    namedKey: 'Authorize app API token “{{name}}”',
+  },
   'token.delete_batch': { labelKey: 'Batch delete API tokens' },
   'token.key_view_batch': { labelKey: 'View API token keys in batch' },
 }
@@ -117,6 +121,8 @@ export function auditFieldLabel(key: string, t: TFunction): string {
       return 'ID'
     case 'name':
       return t('Name')
+    case 'client_name':
+      return t('App')
     case 'username':
       return t('Username')
     case 'target_user_id':

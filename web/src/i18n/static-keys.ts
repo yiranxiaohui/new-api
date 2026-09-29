@@ -730,6 +730,10 @@ export const STATIC_I18N_KEYS = [
   'API token batch deletion',
   'API token key access',
   'API token batch key access',
+  'Authorize app API token',
+  'Authorize app API token “{{name}}”',
+  'API token app authorization',
+  'App {{client_name}} retrieved API token key (ID: {{id}})',
 
   // Channel status audit events
   "View other accounts' audit logs",

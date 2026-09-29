@@ -62,6 +62,13 @@ const (
 	MsgTokenAutoGroupsInvalid    = "token.auto_groups_invalid"
 )
 
+// App authorization related messages
+const (
+	MsgAppAuthDisabled       = "app_auth.disabled"
+	MsgAppAuthInvalidRequest = "app_auth.invalid_request"
+	MsgAppAuthInvalidGrant   = "app_auth.invalid_grant"
+)
+
 // Redemption related messages
 const (
 	MsgRedemptionNameLength        = "redemption.name_length"

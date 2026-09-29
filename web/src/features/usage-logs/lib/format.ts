@@ -455,6 +455,9 @@ const AUDIT_TEMPLATES: Record<string, string> = {
   'token.delete_batch': 'API token batch deletion',
   'token.key_view': 'API token key access',
   'token.key_view_batch': 'API token batch key access',
+  'token.app_authorize': 'API token app authorization',
+  'token.app_key_exchange':
+    'App {{client_name}} retrieved API token key (ID: {{id}})',
   'access_token.generate': 'Generated a system access token',
   'access_token.revoke': 'Revoked the system access token',
   'user.2fa_setup': 'Started two-factor authentication setup',
