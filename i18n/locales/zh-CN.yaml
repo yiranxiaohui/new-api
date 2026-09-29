@@ -57,6 +57,7 @@ token.auto_groups_invalid: "Auto 分组 {{.Group}} 不可用或无权访问"
 app_auth.disabled: "本站未开启应用授权"
 app_auth.invalid_request: "应用授权请求无效"
 app_auth.invalid_grant: "授权码无效或已过期，请重新授权"
+client_download.unavailable: "暂时无法获取客户端版本信息，请稍后重试"
 
 # Redemption messages
 redemption.name_length: "兑换码名称长度必须在1-20之间"

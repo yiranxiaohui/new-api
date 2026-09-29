@@ -56,6 +56,7 @@ const _systemInfoSchema = z.object({
   HomePageContent: z.string().optional(),
   general_setting: z.object({
     docs_link: z.string(),
+    client_download_mirror: z.string().refine(isValidTaskPublicAddress),
   }),
   legal: z.object({
     user_agreement: z.string().optional(),
@@ -88,6 +89,9 @@ export function SystemInfoSection({ defaultValues }: SystemInfoSectionProps) {
     HomePageContent: normalizeValue(defaultValues.HomePageContent),
     general_setting: {
       docs_link: normalizeValue(defaultValues.general_setting?.docs_link),
+      client_download_mirror: normalizeValue(
+        defaultValues.general_setting?.client_download_mirror
+      ),
     },
     legal: {
       user_agreement: normalizeValue(defaultValues.legal?.user_agreement),
@@ -112,6 +116,12 @@ export function SystemInfoSection({ defaultValues }: SystemInfoSectionProps) {
     HomePageContent: z.string().optional(),
     general_setting: z.object({
       docs_link: z.string(),
+      client_download_mirror: z.string().refine(isValidTaskPublicAddress, {
+        error: () =>
+          t(
+            'Enter an absolute HTTP(S) URL without credentials, query parameters, or fragments'
+          ),
+      }),
     }),
     legal: z.object({
       user_agreement: z.string().optional(),
@@ -248,6 +258,25 @@ export function SystemInfoSection({ defaultValues }: SystemInfoSectionProps) {
                     </FormControl>
                     <FormDescription>
                       {t('Link to your documentation site')}
+                    </FormDescription>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+
+              <FormField
+                control={form.control}
+                name='general_setting.client_download_mirror'
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>{t('Client Download Mirror')}</FormLabel>
+                    <FormControl>
+                      <Input placeholder='https://gh-proxy.com/' {...field} />
+                    </FormControl>
+                    <FormDescription>
+                      {t(
+                        'GitHub acceleration prefix for the downloads page. Leave empty to offer GitHub links only'
+                      )}
                     </FormDescription>
                     <FormMessage />
                   </FormItem>

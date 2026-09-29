@@ -33,6 +33,7 @@ export type HeaderNavModulesConfig = {
   console: boolean
   pricing: HeaderNavAccessConfig
   rankings: HeaderNavAccessConfig
+  downloads: HeaderNavAccessConfig
   docs: boolean
   about: boolean
   external_links: HeaderExternalLinkConfig[]
@@ -54,6 +55,10 @@ export const HEADER_NAV_DEFAULT: HeaderNavModulesConfig = {
     requireAuth: false,
   },
   rankings: {
+    enabled: true,
+    requireAuth: false,
+  },
+  downloads: {
     enabled: true,
     requireAuth: false,
   },
@@ -109,6 +114,7 @@ const cloneHeaderNavDefault = (): HeaderNavModulesConfig => ({
   ...HEADER_NAV_DEFAULT,
   pricing: { ...HEADER_NAV_DEFAULT.pricing },
   rankings: { ...HEADER_NAV_DEFAULT.rankings },
+  downloads: { ...HEADER_NAV_DEFAULT.downloads },
   external_links: [],
 })
 
@@ -176,6 +182,7 @@ export function parseHeaderNavModules(
       ...base,
       pricing: { ...base.pricing },
       rankings: { ...base.rankings },
+      downloads: { ...base.downloads },
       external_links: [],
     }
 
@@ -186,6 +193,10 @@ export function parseHeaderNavModules(
       }
       if (key === 'rankings') {
         result.rankings = parseAccessModule(raw, base.rankings)
+        return
+      }
+      if (key === 'downloads') {
+        result.downloads = parseAccessModule(raw, base.downloads)
         return
       }
       if (key === 'external_links') {

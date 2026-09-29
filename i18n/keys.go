@@ -69,6 +69,11 @@ const (
 	MsgAppAuthInvalidGrant   = "app_auth.invalid_grant"
 )
 
+// Client download related messages
+const (
+	MsgClientDownloadUnavailable = "client_download.unavailable"
+)
+
 // Redemption related messages
 const (
 	MsgRedemptionNameLength        = "redemption.name_length"

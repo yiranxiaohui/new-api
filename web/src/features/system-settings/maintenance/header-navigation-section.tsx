@@ -23,6 +23,7 @@ import { useFieldArray, useForm } from 'react-hook-form'
 import { useTranslation } from 'react-i18next'
 import * as z from 'zod'
 
+import { Button } from '@/components/ui/button'
 import {
   Form,
   FormControl,
@@ -31,7 +32,6 @@ import {
   FormLabel,
   FormMessage,
 } from '@/components/ui/form'
-import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Switch } from '@/components/ui/switch'
 
@@ -66,6 +66,8 @@ const headerNavSchema = z.object({
   pricingRequireAuth: z.boolean(),
   rankingsEnabled: z.boolean(),
   rankingsRequireAuth: z.boolean(),
+  downloadsEnabled: z.boolean(),
+  downloadsRequireAuth: z.boolean(),
   docs: z.boolean(),
   about: z.boolean(),
   externalLinks: z.array(externalLinkSchema),
@@ -107,6 +109,14 @@ const toFormValues = (config: HeaderNavModulesConfig): HeaderNavFormValues => ({
     config.rankings?.requireAuth === undefined
       ? HEADER_NAV_DEFAULT.rankings.requireAuth
       : Boolean(config.rankings.requireAuth),
+  downloadsEnabled:
+    config.downloads?.enabled === undefined
+      ? HEADER_NAV_DEFAULT.downloads.enabled
+      : Boolean(config.downloads.enabled),
+  downloadsRequireAuth:
+    config.downloads?.requireAuth === undefined
+      ? HEADER_NAV_DEFAULT.downloads.requireAuth
+      : Boolean(config.downloads.requireAuth),
   docs:
     config.docs === undefined ? HEADER_NAV_DEFAULT.docs : Boolean(config.docs),
   about:
@@ -171,6 +181,11 @@ export function HeaderNavigationSection({
         enabled: values.rankingsEnabled,
         requireAuth: values.rankingsRequireAuth,
       },
+      downloads: {
+        ...(config.downloads ?? HEADER_NAV_DEFAULT.downloads),
+        enabled: values.downloadsEnabled,
+        requireAuth: values.downloadsRequireAuth,
+      },
       external_links: externalLinks,
     }
 
@@ -219,7 +234,10 @@ export function HeaderNavigationSection({
   const accessModules: Array<{
     enabledKey: HeaderNavBooleanKey
     requireAuthKey: HeaderNavBooleanKey
-    requireAuthDependsOn: 'pricingEnabled' | 'rankingsEnabled'
+    requireAuthDependsOn:
+      | 'pricingEnabled'
+      | 'rankingsEnabled'
+      | 'downloadsEnabled'
     title: string
     description: string
     requireAuthTitle: string
@@ -245,6 +263,17 @@ export function HeaderNavigationSection({
       requireAuthTitle: t('Require login to view rankings'),
       requireAuthDescription: t(
         'Visitors must authenticate before accessing the rankings page.'
+      ),
+    },
+    {
+      enabledKey: 'downloadsEnabled',
+      requireAuthKey: 'downloadsRequireAuth',
+      requireAuthDependsOn: 'downloadsEnabled',
+      title: t('Downloads'),
+      description: t('Public page for downloading the Pier client.'),
+      requireAuthTitle: t('Require login to view downloads'),
+      requireAuthDescription: t(
+        'Visitors must authenticate before accessing the downloads page.'
       ),
     },
   ]
@@ -354,10 +383,7 @@ export function HeaderNavigationSection({
                             {t('Label')}
                           </FormLabel>
                           <FormControl>
-                            <Input
-                              placeholder={t('e.g., Model Chat')}
-                              {...f}
-                            />
+                            <Input placeholder={t('e.g., Model Chat')} {...f} />
                           </FormControl>
                           <FormMessage />
                         </div>

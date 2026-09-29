@@ -45,6 +45,8 @@ const SITE_SECTIONS = [
           TaskPublicAddress: settings.TaskPublicAddress,
           general_setting: {
             docs_link: settings['general_setting.docs_link'],
+            client_download_mirror:
+              settings['general_setting.client_download_mirror'],
           },
           legal: {
             user_agreement: settings['legal.user_agreement'],

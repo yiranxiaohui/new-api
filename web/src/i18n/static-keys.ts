@@ -830,4 +830,12 @@ export const STATIC_I18N_KEYS = [
   'Default Usage Policy document',
   'Default Supported Regions document',
   'Default Service-Specific Terms document',
+
+  // Client installer labels (features/downloads/lib/platform.ts)
+  'Installer',
+  'Apple silicon',
+  'Intel chip',
+  'AppImage',
+  'Debian / Ubuntu (.deb)',
+  'APK',
 ] as const

@@ -11,9 +11,11 @@ const (
 )
 
 type GeneralSetting struct {
-	DocsLink            string `json:"docs_link"`
-	PingIntervalEnabled bool   `json:"ping_interval_enabled"`
-	PingIntervalSeconds int    `json:"ping_interval_seconds"`
+	DocsLink string `json:"docs_link"`
+	// GitHub 加速前缀，用于客户端下载页，例如 https://gh-proxy.com/；为空时仅提供 GitHub 原始链接
+	ClientDownloadMirror string `json:"client_download_mirror"`
+	PingIntervalEnabled  bool   `json:"ping_interval_enabled"`
+	PingIntervalSeconds  int    `json:"ping_interval_seconds"`
 	// 当前站点额度展示类型：USD / CNY / TOKENS
 	QuotaDisplayType string `json:"quota_display_type"`
 	// 自定义货币符号，用于 CUSTOM 展示类型
@@ -25,6 +27,7 @@ type GeneralSetting struct {
 // 默认配置
 var generalSetting = GeneralSetting{
 	DocsLink:                   "https://docs.newapi.pro",
+	ClientDownloadMirror:       "https://gh-proxy.com/",
 	PingIntervalEnabled:        false,
 	PingIntervalSeconds:        60,
 	QuotaDisplayType:           QuotaDisplayTypeUSD,

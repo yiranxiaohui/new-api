@@ -57,6 +57,7 @@ token.auto_groups_invalid: "Auto 分組 {{.Group}} 不可用或無權存取"
 app_auth.disabled: "本站未開啟應用授權"
 app_auth.invalid_request: "應用授權請求無效"
 app_auth.invalid_grant: "授權碼無效或已過期，請重新授權"
+client_download.unavailable: "暫時無法取得用戶端版本資訊，請稍後重試"
 
 # Redemption messages
 redemption.name_length: "兌換碼名稱長度必須在1-20之間"

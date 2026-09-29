@@ -30,6 +30,7 @@ import { Route as errors503RouteImport } from './routes/(errors)/503'
 import { Route as AuthenticatedChat2linkRouteImport } from './routes/_authenticated/chat2link'
 import { Route as AuthenticatedSystemSettingsRouteRouteImport } from './routes/_authenticated/system-settings/route'
 import { Route as AboutIndexRouteImport } from './routes/about/index'
+import { Route as DownloadsIndexRouteImport } from './routes/downloads/index'
 import { Route as LegalServiceSpecificTermsRouteImport } from './routes/legal/service-specific-terms'
 import { Route as LegalSupportedRegionsRouteImport } from './routes/legal/supported-regions'
 import { Route as LegalTermsRouteImport } from './routes/legal/terms'
@@ -181,6 +182,11 @@ const AuthenticatedSystemSettingsRouteRoute =
 const AboutIndexRoute = AboutIndexRouteImport.update({
   id: '/about/',
   path: '/about/',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const DownloadsIndexRoute = DownloadsIndexRouteImport.update({
+  id: '/downloads/',
+  path: '/downloads/',
   getParentRoute: () => rootRouteImport,
 } as any)
 const LegalServiceSpecificTermsRoute =
@@ -485,6 +491,7 @@ export interface FileRoutesByFullPath {
   '/legal/usage-policy': typeof LegalUsagePolicyRoute
   '/oauth/$provider': typeof OauthProviderRoute
   '/about/': typeof AboutIndexRoute
+  '/downloads/': typeof DownloadsIndexRoute
   '/pricing/': typeof PricingIndexRoute
   '/rankings/': typeof RankingsIndexRoute
   '/setup/': typeof SetupIndexRoute
@@ -553,6 +560,7 @@ export interface FileRoutesByTo {
   '/legal/usage-policy': typeof LegalUsagePolicyRoute
   '/oauth/$provider': typeof OauthProviderRoute
   '/about': typeof AboutIndexRoute
+  '/downloads': typeof DownloadsIndexRoute
   '/pricing': typeof PricingIndexRoute
   '/rankings': typeof RankingsIndexRoute
   '/setup': typeof SetupIndexRoute
@@ -625,6 +633,7 @@ export interface FileRoutesById {
   '/legal/usage-policy': typeof LegalUsagePolicyRoute
   '/oauth/$provider': typeof OauthProviderRoute
   '/about/': typeof AboutIndexRoute
+  '/downloads/': typeof DownloadsIndexRoute
   '/pricing/': typeof PricingIndexRoute
   '/rankings/': typeof RankingsIndexRoute
   '/setup/': typeof SetupIndexRoute
@@ -696,6 +705,7 @@ export interface FileRouteTypes {
     | '/legal/usage-policy'
     | '/oauth/$provider'
     | '/about/'
+    | '/downloads/'
     | '/pricing/'
     | '/rankings/'
     | '/setup/'
@@ -764,6 +774,7 @@ export interface FileRouteTypes {
     | '/legal/usage-policy'
     | '/oauth/$provider'
     | '/about'
+    | '/downloads'
     | '/pricing'
     | '/rankings'
     | '/setup'
@@ -835,6 +846,7 @@ export interface FileRouteTypes {
     | '/legal/usage-policy'
     | '/oauth/$provider'
     | '/about/'
+    | '/downloads/'
     | '/pricing/'
     | '/rankings/'
     | '/setup/'
@@ -897,6 +909,7 @@ export interface RootRouteChildren {
   LegalUsagePolicyRoute: typeof LegalUsagePolicyRoute
   OauthProviderRoute: typeof OauthProviderRoute
   AboutIndexRoute: typeof AboutIndexRoute
+  DownloadsIndexRoute: typeof DownloadsIndexRoute
   PricingIndexRoute: typeof PricingIndexRoute
   RankingsIndexRoute: typeof RankingsIndexRoute
   SetupIndexRoute: typeof SetupIndexRoute
@@ -1050,6 +1063,13 @@ declare module '@tanstack/react-router' {
       path: '/about'
       fullPath: '/about/'
       preLoaderRoute: typeof AboutIndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/downloads/': {
+      id: '/downloads/'
+      path: '/downloads'
+      fullPath: '/downloads/'
+      preLoaderRoute: typeof DownloadsIndexRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/legal/service-specific-terms': {
@@ -1556,6 +1576,7 @@ const rootRouteChildren: RootRouteChildren = {
   LegalUsagePolicyRoute: LegalUsagePolicyRoute,
   OauthProviderRoute: OauthProviderRoute,
   AboutIndexRoute: AboutIndexRoute,
+  DownloadsIndexRoute: DownloadsIndexRoute,
   PricingIndexRoute: PricingIndexRoute,
   RankingsIndexRoute: RankingsIndexRoute,
   SetupIndexRoute: SetupIndexRoute,

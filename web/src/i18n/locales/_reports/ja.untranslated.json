@@ -1,6 +1,7 @@
 {
   "Add link": "Add link",
   "Append additional links to the header. Saved entries with an empty URL are dropped.": "Append additional links to the header. Saved entries with an empty URL are dropped.",
+  "AppImage": "AppImage",
   "Custom external links": "Custom external links",
   "Doubao": "Doubao",
   "Max in-flight requests for this user. 0 follows the global setting, -1 means unlimited.": "Max in-flight requests for this user. 0 follows the global setting, -1 means unlimited.",

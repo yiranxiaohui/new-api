@@ -22,7 +22,7 @@ import { readCachedStatus, statusQueryOptions } from '@/lib/status-query'
 
 export type ModuleAccess = { enabled: boolean; requireAuth: boolean }
 
-export type HeaderNavModule = 'rankings' | 'pricing'
+export type HeaderNavModule = 'rankings' | 'pricing' | 'downloads'
 
 export type HeaderExternalLink = {
   enabled: boolean
@@ -36,6 +36,7 @@ export type HeaderNavModules = {
   console: boolean
   pricing: ModuleAccess
   rankings: ModuleAccess
+  downloads: ModuleAccess
   docs: boolean
   about: boolean
   external_links: HeaderExternalLink[]
@@ -47,6 +48,7 @@ const DEFAULT_HEADER_NAV_MODULES: HeaderNavModules = {
   console: true,
   pricing: { enabled: true, requireAuth: false },
   rankings: { enabled: true, requireAuth: false },
+  downloads: { enabled: true, requireAuth: false },
   docs: true,
   about: true,
   external_links: [],
@@ -55,6 +57,7 @@ const DEFAULT_HEADER_NAV_MODULES: HeaderNavModules = {
 const DEFAULTS: Record<HeaderNavModule, ModuleAccess> = {
   pricing: DEFAULT_HEADER_NAV_MODULES.pricing,
   rankings: DEFAULT_HEADER_NAV_MODULES.rankings,
+  downloads: DEFAULT_HEADER_NAV_MODULES.downloads,
 }
 
 function cloneHeaderNavDefaults(): HeaderNavModules {
@@ -62,6 +65,7 @@ function cloneHeaderNavDefaults(): HeaderNavModules {
     ...DEFAULT_HEADER_NAV_MODULES,
     pricing: { ...DEFAULT_HEADER_NAV_MODULES.pricing },
     rankings: { ...DEFAULT_HEADER_NAV_MODULES.rankings },
+    downloads: { ...DEFAULT_HEADER_NAV_MODULES.downloads },
     external_links: [],
   }
 }
@@ -146,6 +150,10 @@ export function parseHeaderNavModules(raw: unknown): HeaderNavModules {
     }
     if (key === 'rankings') {
       result.rankings = parseAccess(value, result.rankings)
+      return
+    }
+    if (key === 'downloads') {
+      result.downloads = parseAccess(value, result.downloads)
       return
     }
     if (key === 'external_links') {
