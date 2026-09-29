@@ -43,10 +43,23 @@ export type AuthorizeAppResponse = {
   data?: { redirect_url: string }
 }
 
+export type AuthorizeAppSignInPayload = Omit<AuthorizeAppPayload, 'token'>
+
 /** Approve an app: creates the API key and returns the loopback redirect URL. */
 export async function authorizeApp(
   payload: AuthorizeAppPayload
 ): Promise<AuthorizeAppResponse> {
   const res = await api.post('/api/app-auth/authorize', payload)
+  return res.data
+}
+
+/**
+ * Let an app sign in to the account: returns the loopback redirect URL whose
+ * code exchanges for a login session of the app's own.
+ */
+export async function authorizeAppSignIn(
+  payload: AuthorizeAppSignInPayload
+): Promise<AuthorizeAppResponse> {
+  const res = await api.post('/api/app-auth/authorize/account', payload)
   return res.data
 }

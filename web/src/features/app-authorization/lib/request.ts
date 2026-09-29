@@ -28,7 +28,14 @@ export type AppAuthorizationSearch = {
   code_challenge_method?: string
   state?: string
   key_name?: string
+  scope?: string
 }
+
+/**
+ * What the app asks for: `token` creates one API key for it, `account` signs
+ * the app in to the account (its own login session).
+ */
+export type AppAuthorizationScope = 'token' | 'account'
 
 export type AppAuthorizationRequest = {
   clientName: string
@@ -37,6 +44,7 @@ export type AppAuthorizationRequest = {
   codeChallenge: string
   state: string
   keyName: string
+  scope: AppAuthorizationScope
 }
 
 export const APP_CLIENT_NAME_MAX_LENGTH = 64
@@ -110,6 +118,8 @@ export function parseAppAuthorizationRequest(
   if (typeof state !== 'string' || state.length > APP_STATE_MAX_LENGTH) {
     return null
   }
+  const scope = parseScope(search.scope)
+  if (!scope) return null
 
   let keyName =
     typeof search.key_name === 'string' ? search.key_name.trim() : ''
@@ -123,7 +133,13 @@ export function parseAppAuthorizationRequest(
     codeChallenge: search.code_challenge,
     state,
     keyName,
+    scope,
   }
+}
+
+function parseScope(value: unknown): AppAuthorizationScope | null {
+  if (value === undefined || value === '' || value === 'token') return 'token'
+  return value === 'account' ? 'account' : null
 }
 
 /** Where to send the browser when the user declines (RFC 6749 access_denied). */

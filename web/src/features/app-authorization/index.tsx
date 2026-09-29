@@ -29,11 +29,13 @@ import { useSystemConfig } from '@/hooks/use-system-config'
 import { useAuthStore } from '@/stores/auth-store'
 
 import { AppAuthorizationForm } from './components/app-authorization-form'
+import { AppSignInForm } from './components/app-sign-in-form'
 import { parseAppAuthorizationRequest } from './lib/request'
 
 /**
- * Consent page for native apps that request an API key (`/app-auth`). The
- * route guard has already made sure the user is signed in.
+ * Consent page for native apps that request an API key or to sign in to the
+ * account (`/app-auth`). The route guard has already made sure the user is
+ * signed in.
  */
 export function AppAuthorization() {
   const { t } = useTranslation()
@@ -84,6 +86,15 @@ export function AppAuthorization() {
           'You can close this page and go back to {{app}}.',
           { app: request.clientName }
         )}
+      />
+    )
+  } else if (user && request.scope === 'account') {
+    content = (
+      <AppSignInForm
+        request={request}
+        siteName={systemName}
+        user={user}
+        onRedirect={redirect}
       />
     )
   } else if (user) {

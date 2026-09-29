@@ -69,7 +69,15 @@ describe('parseAppAuthorizationRequest', () => {
       codeChallenge: challenge,
       state: 'abc',
       keyName: 'Pier · laptop',
+      scope: 'token',
     })
+  })
+
+  it('reads the requested scope', () => {
+    expect(parseAppAuthorizationRequest({ ...valid, scope: 'token' })?.scope).toBe('token')
+    expect(parseAppAuthorizationRequest({ ...valid, scope: 'account' })?.scope).toBe(
+      'account'
+    )
   })
 
   it.each([
@@ -81,6 +89,8 @@ describe('parseAppAuthorizationRequest', () => {
     { client_name: 'a'.repeat(65) },
     { redirect_uri: 'https://attacker.example/callback' },
     { state: 's'.repeat(513) },
+    { scope: 'admin' },
+    { scope: 'account token' },
   ])('rejects %o', (override) => {
     expect(parseAppAuthorizationRequest({ ...valid, ...override })).toBeNull()
   })

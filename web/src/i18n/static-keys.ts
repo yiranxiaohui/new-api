@@ -734,6 +734,8 @@ export const STATIC_I18N_KEYS = [
   'Authorize app API token “{{name}}”',
   'API token app authorization',
   'App {{client_name}} retrieved API token key (ID: {{id}})',
+  'Allowed app {{client_name}} to sign in',
+  'App {{client_name}} signed in',
 
   // Channel status audit events
   "View other accounts' audit logs",

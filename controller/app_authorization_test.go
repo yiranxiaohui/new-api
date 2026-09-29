@@ -48,6 +48,14 @@ type appAuthTestResponse struct {
 			ID       int    `json:"id"`
 			Username string `json:"username"`
 		} `json:"user"`
+		Scope           string `json:"scope"`
+		AccessToken     string `json:"access_token"`
+		AccessExpiresAt int64  `json:"access_expires_at"`
+		RefreshToken    string `json:"refresh_token"`
+		Session         struct {
+			SID         string `json:"sid"`
+			LoginMethod string `json:"login_method"`
+		} `json:"session"`
 	} `json:"data"`
 }
 
@@ -105,6 +113,20 @@ func (env *appAuthTestEnv) authorize(t *testing.T) string {
 	return code
 }
 
+// authorizeSignIn approves a sign-in request and returns the issued code.
+func (env *appAuthTestEnv) authorizeSignIn(t *testing.T) string {
+	t.Helper()
+	status, response, _ := env.post(t, "/api/app-auth/authorize/account", env.jwt, appAuthRequest(map[string]any{"token": nil}))
+	require.Equal(t, 200, status)
+	require.True(t, response.Success, response.Message)
+	redirect, err := url.Parse(response.Data.RedirectURL)
+	require.NoError(t, err)
+	assert.Equal(t, "state-123", redirect.Query().Get("state"))
+	code := redirect.Query().Get("code")
+	require.NotEmpty(t, code)
+	return code
+}
+
 func (env *appAuthTestEnv) exchange(t *testing.T, code string, verifier string, redirectURI string) appAuthTestResponse {
 	t.Helper()
 	status, response, _ := env.post(t, "/api/app-auth/token", "", map[string]any{"code": code, "code_verifier": verifier, "redirect_uri": redirectURI})
@@ -147,6 +169,7 @@ func setupAppAuthTest(t *testing.T, kind string, dsn string) *appAuthTestEnv {
 	router := gin.New()
 	router.Use(middleware.RequestId())
 	router.POST("/api/app-auth/authorize", middleware.UserAuth(), middleware.TokenOperationAudit(), AuthorizeApp)
+	router.POST("/api/app-auth/authorize/account", middleware.UserAuth(), AuthorizeAppSignIn)
 	router.POST("/api/app-auth/token", ExchangeAppAuthorization)
 	return &appAuthTestEnv{router: router, user: user, session: session, jwt: jwt, pat: pat}
 }
@@ -307,5 +330,100 @@ func verifyAppAuthorization(t *testing.T, kind string, dsn string) {
 		// Malformed attempts never reached a live grant, so the code still works once.
 		exchanged := env.exchange(t, code, appAuthTestVerifier, appAuthTestRedirectURI)
 		assert.True(t, exchanged.Success, exchanged.Message)
+	})
+	t.Run("sign-in code exchanges once for a new login session", func(t *testing.T) {
+		env := setupAppAuthTest(t, kind, dsn)
+		code := env.authorizeSignIn(t)
+
+		var tokens int64
+		require.NoError(t, model.DB.Model(&model.Token{}).Count(&tokens).Error)
+		assert.Zero(t, tokens, "signing in creates no API token")
+
+		exchanged := env.exchange(t, code, appAuthTestVerifier, appAuthTestRedirectURI)
+		require.True(t, exchanged.Success, exchanged.Message)
+		assert.Equal(t, "account", exchanged.Data.Scope)
+		assert.Empty(t, exchanged.Data.Key)
+		assert.Equal(t, "app-owner", exchanged.Data.User.Username)
+		assert.Equal(t, "app", exchanged.Data.Session.LoginMethod)
+		require.NotEmpty(t, exchanged.Data.AccessToken)
+		require.True(t, strings.HasPrefix(exchanged.Data.RefreshToken, exchanged.Data.Session.SID+"."))
+		assert.NotEqual(t, env.session.SID, exchanged.Data.Session.SID, "the app gets its own session")
+
+		identity, err := service.ParseAccessToken(exchanged.Data.AccessToken)
+		require.NoError(t, err)
+		assert.Equal(t, env.user.Id, identity.UserID)
+		assert.Equal(t, exchanged.Data.Session.SID, identity.SessionID)
+
+		// The refresh token renews like the browser's refresh cookie.
+		bundle, _, err := service.RefreshLoginSession(exchanged.Data.RefreshToken, "", "192.0.2.30", "Pier")
+		require.NoError(t, err)
+		assert.Equal(t, exchanged.Data.Session.SID, bundle.Session.SID)
+
+		replay := env.exchange(t, code, appAuthTestVerifier, appAuthTestRedirectURI)
+		assert.False(t, replay.Success)
+		assert.Empty(t, replay.Data.AccessToken)
+
+		var events []model.AuditLog
+		require.NoError(t, model.LOG_DB.Where("user_id = ?", env.user.Id).Order("id").Find(&events).Error)
+		actions := map[string]bool{}
+		for _, event := range events {
+			if event.Success {
+				actions[event.Action] = true
+			}
+		}
+		assert.True(t, actions["session.app_authorize"], "sign-in consent is audited")
+		assert.True(t, actions["session.app_sign_in"], "sign-in exchange is audited")
+		assert.False(t, actions["token.app_authorize"])
+		encoded, err := common.Marshal(events)
+		require.NoError(t, err)
+		for _, secret := range []string{code, appAuthTestVerifier, env.jwt, exchanged.Data.AccessToken, exchanged.Data.RefreshToken} {
+			assert.NotContains(t, string(encoded), secret)
+		}
+	})
+
+	t.Run("sign-in codes are burned by mismatches and voided by revocation", func(t *testing.T) {
+		env := setupAppAuthTest(t, kind, dsn)
+		wrong := env.authorizeSignIn(t)
+		assert.False(t, env.exchange(t, wrong, strings.Repeat("x", 43), appAuthTestRedirectURI).Success)
+		assert.False(t, env.exchange(t, wrong, appAuthTestVerifier, appAuthTestRedirectURI).Success)
+
+		bumped := env.authorizeSignIn(t)
+		require.NoError(t, model.DB.Model(&model.User{}).Where("id = ?", env.user.Id).Update("auth_version", 2).Error)
+		response := env.exchange(t, bumped, appAuthTestVerifier, appAuthTestRedirectURI)
+		assert.False(t, response.Success, "a changed auth version voids the code")
+		assert.Empty(t, response.Data.AccessToken)
+		require.NoError(t, model.DB.Model(&model.User{}).Where("id = ?", env.user.Id).Update("auth_version", 1).Error)
+
+		revoked := env.authorizeSignIn(t)
+		_, err := model.RevokeUserSession(env.user.Id, env.session.SID, "logout")
+		require.NoError(t, err)
+		response = env.exchange(t, revoked, appAuthTestVerifier, appAuthTestRedirectURI)
+		assert.False(t, response.Success)
+		assert.Empty(t, response.Data.AccessToken)
+
+		var sessions int64
+		require.NoError(t, model.DB.Model(&model.UserSession{}).Count(&sessions).Error)
+		assert.Equal(t, int64(1), sessions, "no session was created")
+	})
+
+	t.Run("sign-in requests are validated and need a browser session", func(t *testing.T) {
+		env := setupAppAuthTest(t, kind, dsn)
+		for index, overrides := range []map[string]any{
+			{"redirect_uri": "https://attacker.example/callback"},
+			{"code_challenge_method": "plain"},
+			{"client_name": "  "},
+		} {
+			_, response, _ := env.post(t, "/api/app-auth/authorize/account", env.jwt, appAuthRequest(overrides))
+			assert.False(t, response.Success, "case %d", index)
+		}
+		status, response, _ := env.post(t, "/api/app-auth/authorize/account", env.pat, appAuthRequest(nil))
+		assert.Equal(t, 401, status, "a personal access token cannot sign an app in")
+		assert.False(t, response.Success)
+		common.AppAuthorizationEnabled = false
+		_, response, _ = env.post(t, "/api/app-auth/authorize/account", env.jwt, appAuthRequest(nil))
+		assert.False(t, response.Success)
+		var flows int64
+		require.NoError(t, model.DB.Model(&model.AuthFlow{}).Count(&flows).Error)
+		assert.Zero(t, flows)
 	})
 }

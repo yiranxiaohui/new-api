@@ -31,6 +31,8 @@ var auditContentTemplates = map[string]string{
 	"user.passkey_register":     "Registered a passkey",
 	"access_token.generate":     "Generated a system access token",
 	"token.app_key_exchange":    "App ${client_name} retrieved API token key (ID: ${id})",
+	"session.app_authorize":     "Allowed app ${client_name} to sign in",
+	"session.app_sign_in":       "App ${client_name} signed in",
 	"access_token.revoke":       "Revoked the system access token",
 	"user.2fa_setup":            "Started two-factor authentication setup",
 	"user.2fa_enable":           "Enabled two-factor authentication",
