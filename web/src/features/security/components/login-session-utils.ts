@@ -59,6 +59,8 @@ export function loginMethodLabel(method: string, t: TFunction): string {
       return t('Telegram')
     case 'oauth':
       return t('OAuth')
+    case 'app':
+      return t('App')
     case 'unknown':
     case '':
       return t('Unknown')

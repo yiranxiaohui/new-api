@@ -33,6 +33,7 @@ const searchSchema = z.object({
   code_challenge_method: optionalText,
   state: optionalText,
   key_name: optionalText,
+  scope: optionalText,
 })
 
 export const Route = createFileRoute('/(auth)/app-auth')({

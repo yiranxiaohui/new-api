@@ -41,13 +41,28 @@ import (
 //
 // Codes are single use, expire after appAuthorizationCodeTTL, are stored only
 // as HMAC digests in auth_flows, and stay bound to the approving login session.
+//
+// Apps that manage the account itself (balance, API tokens) request the
+// "account" scope instead: the consent page calls
+// POST /api/app-auth/authorize/account, no API token is created, and the code
+// exchanges for a new login session of the app's own (an access token plus a
+// refresh token the app presents as the refresh cookie). The session is listed
+// with the user's other login sessions and can be revoked there.
 
 const (
 	appAuthorizationCodeTTL       = 5 * time.Minute
 	appAuthorizationMaxClientName = 64
 	appAuthorizationMaxState      = 512
 	appAuthorizationMaxRedirect   = 512
+
+	// appAuthorizationScopeAccount grants a login session instead of an API token.
+	appAuthorizationScopeAccount = "account"
+	// appSignInLoginMethod is the login method recorded for app sessions.
+	appSignInLoginMethod = "app"
 )
+
+// appAuthorizationScopes lists the scopes this server supports, for /api/status.
+var appAuthorizationScopes = []string{"token", appAuthorizationScopeAccount}
 
 type appAuthorizationRequest struct {
 	ClientName          string       `json:"client_name"`
@@ -58,6 +73,15 @@ type appAuthorizationRequest struct {
 	Token               tokenRequest `json:"token"`
 }
 
+// appSignInRequest asks for a login session (the "account" scope).
+type appSignInRequest struct {
+	ClientName          string `json:"client_name"`
+	RedirectURI         string `json:"redirect_uri"`
+	CodeChallenge       string `json:"code_challenge"`
+	CodeChallengeMethod string `json:"code_challenge_method"`
+	State               string `json:"state"`
+}
+
 type appAuthorizationExchangeRequest struct {
 	Code         string `json:"code"`
 	CodeVerifier string `json:"code_verifier"`
@@ -66,10 +90,15 @@ type appAuthorizationExchangeRequest struct {
 
 // appAuthorizationGrant is the server-side state behind an authorization code.
 type appAuthorizationGrant struct {
-	TokenID       int    `json:"token_id"`
+	// Scope is empty for API token grants and "account" for sign-in grants.
+	Scope         string `json:"scope,omitempty"`
+	TokenID       int    `json:"token_id,omitempty"`
 	ClientName    string `json:"client_name"`
 	RedirectURI   string `json:"redirect_uri"`
 	CodeChallenge string `json:"code_challenge"`
+	// AuthVersion is the user's auth version at approval (sign-in grants), so a
+	// password change or "sign out everywhere" in between voids the code.
+	AuthVersion int64 `json:"auth_version,omitempty"`
 }
 
 // normalizeAppClientName returns the trimmed display name of the requesting app,
@@ -150,10 +179,8 @@ func AuthorizeApp(c *gin.Context) {
 		common.ApiErrorI18n(c, i18n.MsgInvalidParams)
 		return
 	}
-	clientName, validName := normalizeAppClientName(request.ClientName)
-	challenge, err := base64.RawURLEncoding.DecodeString(request.CodeChallenge)
-	if !validName || !isLoopbackRedirectURI(request.RedirectURI) || request.CodeChallengeMethod != "S256" ||
-		err != nil || len(challenge) != sha256.Size || len(request.State) > appAuthorizationMaxState {
+	clientName, valid := validAppAuthorizationRequest(request.ClientName, request.RedirectURI, request.CodeChallenge, request.CodeChallengeMethod, request.State)
+	if !valid {
 		common.ApiErrorI18n(c, i18n.MsgAppAuthInvalidRequest)
 		return
 	}
@@ -188,15 +215,85 @@ func AuthorizeApp(c *gin.Context) {
 		return
 	}
 
-	redirect, _ := url.Parse(request.RedirectURI)
+	common.SetContextKey(c, constant.ContextKeyTokenAuditSucceeded, true)
+	common.ApiSuccess(c, gin.H{"redirect_url": appAuthorizationRedirect(request.RedirectURI, code, request.State)})
+}
+
+// validAppAuthorizationRequest checks the parameters shared by every scope and
+// returns the normalized app name.
+func validAppAuthorizationRequest(clientName, redirectURI, codeChallenge, method, state string) (string, bool) {
+	name, validName := normalizeAppClientName(clientName)
+	challenge, err := base64.RawURLEncoding.DecodeString(codeChallenge)
+	if !validName || !isLoopbackRedirectURI(redirectURI) || method != "S256" ||
+		err != nil || len(challenge) != sha256.Size || len(state) > appAuthorizationMaxState {
+		return "", false
+	}
+	return name, true
+}
+
+// appAuthorizationRedirect is the loopback URL carrying the code and state.
+func appAuthorizationRedirect(redirectURI, code, state string) string {
+	redirect, _ := url.Parse(redirectURI)
 	query := url.Values{}
 	query.Set("code", code)
-	if request.State != "" {
-		query.Set("state", request.State)
+	if state != "" {
+		query.Set("state", state)
 	}
 	redirect.RawQuery = query.Encode()
-	common.SetContextKey(c, constant.ContextKeyTokenAuditSucceeded, true)
-	common.ApiSuccess(c, gin.H{"redirect_url": redirect.String()})
+	return redirect.String()
+}
+
+// AuthorizeAppSignIn is called by the consent page after the signed-in user
+// lets an app sign in to the account (the "account" scope). No API token is
+// created; the returned loopback URL carries a one-time code that exchanges
+// for a new login session.
+func AuthorizeAppSignIn(c *gin.Context) {
+	setAuthNoStore(c)
+	if !common.AppAuthorizationEnabled {
+		common.ApiErrorI18n(c, i18n.MsgAppAuthDisabled)
+		return
+	}
+	identity, ok := middleware.GetSessionAuthIdentity(c)
+	if !ok {
+		c.JSON(http.StatusUnauthorized, gin.H{"success": false, "message": i18n.T(c, i18n.MsgAuthNotLoggedIn)})
+		return
+	}
+	var request appSignInRequest
+	if err := common.DecodeJson(c.Request.Body, &request); err != nil {
+		common.ApiErrorI18n(c, i18n.MsgInvalidParams)
+		return
+	}
+	clientName, valid := validAppAuthorizationRequest(request.ClientName, request.RedirectURI, request.CodeChallenge, request.CodeChallengeMethod, request.State)
+	if !valid {
+		common.ApiErrorI18n(c, i18n.MsgAppAuthInvalidRequest)
+		return
+	}
+	audit := map[string]any{"client_name": clientName, "success": false}
+	defer func() { recordUserSecurityAudit(c, identity.UserID, "session.app_authorize", audit) }()
+
+	payload, err := common.Marshal(appAuthorizationGrant{
+		Scope:         appAuthorizationScopeAccount,
+		ClientName:    clientName,
+		RedirectURI:   request.RedirectURI,
+		CodeChallenge: request.CodeChallenge,
+		AuthVersion:   identity.UserAuthVersion,
+	})
+	var code string
+	if err == nil {
+		code, _, err = model.CreateAuthFlow(model.AuthFlowCreate{
+			Purpose:   model.AuthFlowPurposeAppAuthorization,
+			UserId:    identity.UserID,
+			SessionId: identity.SessionID,
+			Payload:   string(payload),
+			ExpiresAt: time.Now().Add(appAuthorizationCodeTTL),
+		})
+	}
+	if err != nil {
+		writeSecurityOperationError(c, err)
+		return
+	}
+	audit["success"] = true
+	common.ApiSuccess(c, gin.H{"redirect_url": appAuthorizationRedirect(request.RedirectURI, code, request.State)})
 }
 
 // ExchangeAppAuthorization redeems an authorization code for the key of the
@@ -220,13 +317,24 @@ func ExchangeAppAuthorization(c *gin.Context) {
 		return
 	}
 	match.UserId, match.SessionId = flow.UserId, flow.SessionId
-	audit := map[string]any{"success": false}
-	defer func() { recordUserSecurityAudit(c, flow.UserId, "token.app_key_exchange", audit) }()
-
 	var grant appAuthorizationGrant
 	grantErr := common.UnmarshalJsonStr(flow.Payload, &grant)
+	if grantErr == nil && grant.Scope != "" && grant.Scope != appAuthorizationScopeAccount {
+		grantErr = errors.New("unknown app authorization scope")
+	}
+	signIn := grantErr == nil && grant.Scope == appAuthorizationScopeAccount
+	action := "token.app_key_exchange"
+	if signIn {
+		action = "session.app_sign_in"
+	}
+	audit := map[string]any{"success": false}
+	defer func() { recordUserSecurityAudit(c, flow.UserId, action, audit) }()
+
 	if grantErr == nil {
-		audit["id"], audit["client_name"] = grant.TokenID, grant.ClientName
+		audit["client_name"] = grant.ClientName
+		if !signIn {
+			audit["id"] = grant.TokenID
+		}
 		expected := []byte(grant.CodeChallenge)
 		if subtle.ConstantTimeCompare([]byte(pkceS256Challenge(request.CodeVerifier)), expected) != 1 ||
 			subtle.ConstantTimeCompare([]byte(request.RedirectURI), []byte(grant.RedirectURI)) != 1 {
@@ -235,6 +343,10 @@ func ExchangeAppAuthorization(c *gin.Context) {
 	}
 	if grantErr == nil {
 		_, grantErr = service.ValidateSessionReference(flow.UserId, flow.SessionId)
+	}
+	if signIn {
+		exchangeAppSignIn(c, request.Code, match, flow.UserId, grant, grantErr, audit)
+		return
 	}
 	var token model.Token
 	_, err = model.ConsumeAuthFlowWithAction(request.Code, match, func(tx *gorm.DB, _ *model.AuthFlow) error {
@@ -262,4 +374,40 @@ func ExchangeAppAuthorization(c *gin.Context) {
 	}
 	audit["success"] = true
 	common.ApiSuccess(c, data)
+}
+
+// exchangeAppSignIn burns a sign-in code and starts a new login session for
+// the app. The refresh token is returned in the body because the app is not a
+// browser; it presents it as the refresh cookie when renewing.
+func exchangeAppSignIn(c *gin.Context, code string, match model.AuthFlowMatch, userID int, grant appAuthorizationGrant, grantErr error, audit map[string]any) {
+	if _, err := model.ConsumeAuthFlowWithAction(code, match, func(*gorm.DB, *model.AuthFlow) error { return nil }); err != nil || grantErr != nil {
+		common.ApiErrorI18n(c, i18n.MsgAppAuthInvalidGrant)
+		return
+	}
+	bundle, err := service.CreateLoginSessionAtAuthVersion(userID, grant.AuthVersion, appSignInLoginMethod, c.ClientIP(), c.Request.UserAgent())
+	if err != nil {
+		if errors.Is(err, service.ErrLoginSessionRevoked) || errors.Is(err, service.ErrLoginSessionInvalid) {
+			common.ApiErrorI18n(c, i18n.MsgAppAuthInvalidGrant)
+			return
+		}
+		writeAuthSessionError(c, err)
+		return
+	}
+	user, err := model.GetSelfUserById(userID)
+	if err != nil {
+		_, _ = model.RevokeUserSession(userID, bundle.Session.SID, "app_sign_in_failed")
+		common.ApiError(c, err)
+		return
+	}
+	audit["success"] = true
+	model.UpdateUserLastLoginAt(userID)
+	common.ApiSuccess(c, gin.H{
+		"scope":             appAuthorizationScopeAccount,
+		"access_token":      bundle.AccessToken,
+		"token_type":        bundle.TokenType,
+		"access_expires_at": bundle.AccessExpiresAt,
+		"refresh_token":     bundle.RefreshToken,
+		"session":           bundle.Session,
+		"user":              buildSelfUserData(user),
+	})
 }
