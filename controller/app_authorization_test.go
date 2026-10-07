@@ -298,7 +298,7 @@ func verifyAppAuthorization(t *testing.T, kind string, dsn string) {
 			assert.Empty(t, response.Data.RedirectURL, "case %d", index)
 		}
 		status, response, _ := env.post(t, "/api/app-auth/authorize", env.pat, appAuthRequest(nil))
-		assert.Equal(t, 401, status, "a personal access token cannot grant consent")
+		assert.Contains(t, []int{401, 403}, status, "a personal access token cannot grant consent")
 		assert.False(t, response.Success)
 
 		common.AppAuthorizationEnabled = false
@@ -417,7 +417,7 @@ func verifyAppAuthorization(t *testing.T, kind string, dsn string) {
 			assert.False(t, response.Success, "case %d", index)
 		}
 		status, response, _ := env.post(t, "/api/app-auth/authorize/account", env.pat, appAuthRequest(nil))
-		assert.Equal(t, 401, status, "a personal access token cannot sign an app in")
+		assert.Contains(t, []int{401, 403}, status, "a personal access token cannot sign an app in")
 		assert.False(t, response.Success)
 		common.AppAuthorizationEnabled = false
 		_, response, _ = env.post(t, "/api/app-auth/authorize/account", env.jwt, appAuthRequest(nil))

@@ -29,11 +29,13 @@ var auditContentTemplates = map[string]string{
 	"user.binding_clear":        "Cleared ${bindingType} binding for user ${username}",
 	"user.2fa_disable":          "Force-disabled two-factor authentication for the user",
 	"user.passkey_register":     "Registered a passkey",
-	"access_token.generate":     "Generated a system access token",
+	"access_token.generate":     "Generated an access token",
+	"access_token.revoke":       "Revoked an access token",
+	"access_token.rename":       "Renamed an access token",
+	"access_token.update":       "Changed access token permissions",
 	"token.app_key_exchange":    "App ${client_name} retrieved API token key (ID: ${id})",
 	"session.app_authorize":     "Allowed app ${client_name} to sign in",
 	"session.app_sign_in":       "App ${client_name} signed in",
-	"access_token.revoke":       "Revoked the system access token",
 	"user.2fa_setup":            "Started two-factor authentication setup",
 	"user.2fa_enable":           "Enabled two-factor authentication",
 	"user.2fa_disable_self":     "Disabled two-factor authentication",
@@ -167,6 +169,12 @@ func recordUserSecurityAudit(c *gin.Context, userId int, action string, params m
 			params = map[string]any{}
 		}
 		params["code"] = code
+	}
+	if c.GetBool("use_access_token") {
+		if params == nil {
+			params = map[string]any{}
+		}
+		params["token_ref"] = c.GetString("access_token_ref")
 	}
 	var auditInfo *model.AuditRequestInfo
 	if success, ok := params["success"].(bool); ok {
