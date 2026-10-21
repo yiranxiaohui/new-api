@@ -56,9 +56,11 @@ export function Downloads() {
   let content
   if (releaseQuery.isLoading) {
     content = (
-      <div className='grid gap-4 md:grid-cols-2'>
-        <Skeleton className='h-44 w-full rounded-xl' />
-        <Skeleton className='h-44 w-full rounded-xl' />
+      <div role='status' className='flex flex-col gap-5'>
+        <span className='sr-only'>{t('Loading downloads')}</span>
+        <Skeleton className='h-8 w-52' />
+        <Skeleton className='h-12 w-full max-w-xl' />
+        <Skeleton className='h-52 w-full rounded-2xl' />
       </div>
     )
   } else if (!release) {
@@ -92,10 +94,12 @@ export function Downloads() {
 
   return (
     <PublicLayout showMainContainer={false}>
-      <PageTransition className='mx-auto w-full max-w-[1080px] space-y-8 px-3 pt-16 pb-10 sm:px-6 sm:pt-20 sm:pb-12 xl:px-8'>
-        <DownloadsHero release={release} visitorPlatform={visitorPlatform} />
-        {content}
-      </PageTransition>
+      <main>
+        <PageTransition className='mx-auto flex w-full max-w-6xl flex-col gap-10 px-4 pt-24 pb-12 sm:gap-12 sm:px-6 sm:pt-28 sm:pb-16 lg:px-8'>
+          <DownloadsHero release={release} visitorPlatform={visitorPlatform} />
+          {content}
+        </PageTransition>
+      </main>
     </PublicLayout>
   )
 }
