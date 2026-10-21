@@ -16,8 +16,9 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
-import { render, screen, within } from '@testing-library/react'
-import { describe, expect, it } from 'vitest'
+import { render, screen, waitFor, within } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
+import { describe, expect, it, vi } from 'vitest'
 
 import { parseHeaderNavModules } from '@/lib/nav-modules'
 
@@ -107,57 +108,177 @@ describe('downloads navigation module', () => {
 })
 
 describe('DownloadsHero', () => {
-  it('recommends the installer for the visitor platform through the mirror', () => {
-    render(<DownloadsHero release={release} visitorPlatform='windows' />)
+  it('opens the platform picker instead of guessing a processor for a matching device', () => {
+    render(<DownloadsHero release={release} visitorPlatform='macos' />)
 
-    const link = screen.getByRole('button', { name: /Download for Windows/ })
-    expect(link).toHaveAttribute('href', windowsAsset.mirror_url)
+    expect(
+      screen.getByRole('button', { name: /Download for macOS/ })
+    ).toHaveAttribute('href', '#download-installers')
     expect(screen.getByText(/Version v0\.2\.4/)).toBeInTheDocument()
+    expect(
+      screen.getByRole('heading', {
+        name: 'A cross-device workbench for coding agents.',
+      })
+    ).toBeInTheDocument()
   })
 
-  it('omits the recommendation when no installer matches the visitor', () => {
+  it('offers all downloads when the visitor platform has no installer', () => {
     render(<DownloadsHero release={release} visitorPlatform='ios' />)
 
     expect(
-      screen.queryByRole('button', { name: /Download for/ })
-    ).not.toBeInTheDocument()
+      screen.getByRole('button', { name: 'Download Pier' })
+    ).toHaveAttribute('href', '#download-installers')
   })
+
+  it.each([undefined, { ...release, assets: [] }])(
+    'keeps the project link available without suggesting an unavailable download',
+    (data) => {
+      render(<DownloadsHero release={data} visitorPlatform='windows' />)
+
+      expect(
+        screen.queryByRole('button', { name: /Download/ })
+      ).not.toBeInTheDocument()
+      expect(
+        screen.getByRole('button', { name: 'Explore the project' })
+      ).toHaveAttribute('href', 'https://github.com/yiranxiaohui/Pier')
+    }
+  )
 })
 
 describe('PlatformDownloads', () => {
-  it('offers the mirror and GitHub links only for mirrored installers', () => {
+  it('selects the visitor platform and changes the visible installers when another tab is clicked', async () => {
+    const user = userEvent.setup()
     render(
       <PlatformDownloads assets={release.assets} visitorPlatform='macos' />
     )
 
+    expect(screen.getByRole('tab', { name: 'macOS' })).toHaveAttribute(
+      'aria-selected',
+      'true'
+    )
     expect(
-      screen.getByRole('button', { name: 'Download Installer' })
-    ).toHaveAttribute('href', windowsAsset.mirror_url)
+      within(screen.getByRole('tabpanel')).getByText('Your device')
+    ).toBeInTheDocument()
     expect(
-      screen.getByRole('button', { name: 'Download Installer from GitHub' })
-    ).toHaveAttribute('href', windowsAsset.url)
-    expect(
-      screen.getByRole('button', { name: 'Download Apple silicon' })
+      screen.getByRole('button', {
+        name: 'Download macOS · Apple silicon · arm64',
+      })
     ).toHaveAttribute('href', macAsset.url)
     expect(
+      screen.queryByRole('button', { name: /from GitHub/ })
+    ).not.toBeInTheDocument()
+
+    await user.click(screen.getByRole('tab', { name: 'Windows' }))
+    expect(
+      screen.getByRole('button', { name: 'Download Windows · Installer · x64' })
+    ).toHaveAttribute('href', windowsAsset.mirror_url)
+    expect(
+      screen.getByRole('button', {
+        name: 'Download Windows · Installer · x64 from GitHub',
+      })
+    ).toHaveAttribute('href', windowsAsset.url)
+    expect(
       screen.queryByRole('button', {
-        name: 'Download Apple silicon from GitHub',
+        name: 'Download macOS · Apple silicon · arm64',
       })
     ).not.toBeInTheDocument()
+    expect(screen.queryByText('Your device')).not.toBeInTheDocument()
   })
 
-  it('marks only the visitor platform and skips platforms without installers', () => {
+  it('supports keyboard navigation between platform tabs', async () => {
+    const user = userEvent.setup()
     render(
-      <PlatformDownloads assets={release.assets} visitorPlatform='macos' />
+      <PlatformDownloads assets={release.assets} visitorPlatform='windows' />
     )
 
-    const headings = screen.getAllByRole('heading', { level: 2 })
-    expect(headings.map((heading) => heading.textContent)).toEqual([
-      'Windows',
-      'macOS',
-    ])
-    const macCard = headings[1].closest('[data-slot="card"]') as HTMLElement
-    expect(within(macCard).getByText('Your device')).toBeInTheDocument()
-    expect(screen.getAllByText('Your device')).toHaveLength(1)
+    await user.tab()
+    expect(screen.getByRole('tab', { name: 'Windows' })).toHaveFocus()
+    await user.keyboard('{ArrowRight}')
+    expect(screen.getByRole('tab', { name: 'macOS' })).toHaveFocus()
+    await user.keyboard('{Enter}')
+    await waitFor(() =>
+      expect(screen.getByRole('tab', { name: 'macOS' })).toHaveAttribute(
+        'aria-selected',
+        'true'
+      )
+    )
+    expect(screen.getByRole('tab', { name: 'macOS' })).toHaveFocus()
+    expect(
+      screen.getByRole('button', {
+        name: 'Download macOS · Apple silicon · arm64',
+      })
+    ).toBeVisible()
+  })
+
+  it.each(['ios', null] as const)(
+    'falls back to an available platform for %s without showing unavailable tabs',
+    (visitorPlatform) => {
+      render(
+        <PlatformDownloads
+          assets={release.assets}
+          visitorPlatform={visitorPlatform}
+        />
+      )
+
+      expect(screen.getByRole('tab', { name: 'Windows' })).toHaveAttribute(
+        'aria-selected',
+        'true'
+      )
+      expect(screen.getAllByRole('tab')).toHaveLength(2)
+      expect(screen.queryByText('Your device')).not.toBeInTheDocument()
+    }
+  )
+
+  it('falls back when a refreshed release removes the selected platform', async () => {
+    const user = userEvent.setup()
+    const view = render(
+      <PlatformDownloads assets={release.assets} visitorPlatform='windows' />
+    )
+    await user.click(screen.getByRole('tab', { name: 'macOS' }))
+
+    view.rerender(
+      <PlatformDownloads assets={[windowsAsset]} visitorPlatform='windows' />
+    )
+
+    expect(screen.getByRole('tab', { name: 'Windows' })).toHaveAttribute(
+      'aria-selected',
+      'true'
+    )
+    expect(
+      screen.getByRole('button', { name: 'Download Windows · Installer · x64' })
+    ).toBeVisible()
+  })
+
+  it('explains an empty release without displaying an empty tab list', () => {
+    render(<PlatformDownloads assets={[]} visitorPlatform='windows' />)
+
+    expect(screen.getByText('No installers available')).toBeInTheDocument()
+    expect(screen.queryByRole('tablist')).not.toBeInTheDocument()
+  })
+
+  it('distinguishes Linux architectures in download names and copies the complete checksum', async () => {
+    const user = userEvent.setup()
+    const writeText = vi.spyOn(navigator.clipboard, 'writeText')
+    const assets = ['x64', 'arm64'].map((arch) => ({
+      ...windowsAsset,
+      name: `pier-linux-${arch}.deb`,
+      platform: 'linux' as const,
+      format: 'deb',
+      arch,
+    }))
+    render(<PlatformDownloads assets={assets} visitorPlatform='linux' />)
+
+    for (const arch of ['x64', 'arm64']) {
+      expect(
+        screen.getByRole('button', {
+          name: new RegExp(`^Download Linux · Debian .* · ${arch}$`),
+        })
+      ).toBeVisible()
+    }
+    await user.click(
+      screen.getAllByRole('button', { name: 'Copy SHA-256 checksum' })[0]
+    )
+    expect(writeText).toHaveBeenCalledWith(windowsAsset.sha256)
+    expect(screen.getByRole('button', { name: 'Copied' })).toBeInTheDocument()
   })
 })

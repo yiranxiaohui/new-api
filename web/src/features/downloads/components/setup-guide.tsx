@@ -51,31 +51,34 @@ export function SetupGuide(props: SetupGuideProps) {
       ]
 
   return (
-    <section className='grid gap-4 lg:grid-cols-[3fr_2fr]'>
-      <Card>
-        <CardHeader>
+    <section
+      aria-labelledby='setup-heading'
+      className='grid items-start gap-6 lg:grid-cols-[3fr_2fr]'
+    >
+      <Card className='gap-5 rounded-2xl py-6'>
+        <CardHeader className='px-6'>
           <CardTitle className='text-base'>
-            <h2>{t('Get started')}</h2>
+            <h2 id='setup-heading'>{t('Get started')}</h2>
           </CardTitle>
         </CardHeader>
-        <CardContent>
-          <ol className='space-y-3'>
+        <CardContent className='px-6'>
+          <ol className='flex flex-col gap-5'>
             {steps.map((step, index) => (
-              <li key={step} className='flex gap-3 text-sm'>
+              <li key={step} className='flex gap-4 text-sm leading-6'>
                 <span
                   aria-hidden='true'
-                  className='bg-primary/10 text-primary flex size-6 shrink-0 items-center justify-center rounded-full text-xs font-semibold'
+                  className='bg-primary/10 text-primary flex size-8 shrink-0 items-center justify-center rounded-full text-xs font-semibold'
                 >
                   {index + 1}
                 </span>
-                <span className='pt-0.5'>{step}</span>
+                <span className='pt-1'>{step}</span>
               </li>
             ))}
           </ol>
         </CardContent>
       </Card>
 
-      <div className='space-y-3'>
+      <div className='flex flex-col gap-5'>
         {props.visitorPlatform === 'ios' && (
           <Alert role='note'>
             <Info aria-hidden='true' />

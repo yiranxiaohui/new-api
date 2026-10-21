@@ -20,18 +20,29 @@ import {
   AndroidIcon,
   AppleIcon,
   ComputerTerminal01Icon,
+  Download04Icon,
+  LinkSquare01Icon,
   WindowsNewIcon,
 } from '@hugeicons/core-free-icons'
 import { HugeiconsIcon, type IconSvgElement } from '@hugeicons/react'
-import { Download } from 'lucide-react'
+import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 
 import { CopyButton } from '@/components/copy-button'
+import { EmptyState } from '@/components/empty-state'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from '@/components/ui/card'
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { toIntlLocale } from '@/i18n/languages'
 import { formatNumber } from '@/lib/format'
+import { cn } from '@/lib/utils'
 
 import {
   PLATFORM_LABELS,
@@ -56,37 +67,100 @@ type PlatformDownloadsProps = {
 
 export function PlatformDownloads(props: PlatformDownloadsProps) {
   const { t } = useTranslation()
+  const [selectedPlatform, setSelectedPlatform] = useState<string | null>(
+    props.visitorPlatform
+  )
+  const platforms = PLATFORM_ORDER.filter((platform) =>
+    props.assets.some((asset) => asset.platform === platform)
+  )
+  const activePlatform =
+    platforms.find((platform) => platform === selectedPlatform) ?? platforms[0]
 
   return (
-    <section className='grid gap-4 md:grid-cols-2'>
-      {PLATFORM_ORDER.map((platform) => {
-        const assets = props.assets.filter(
-          (asset) => asset.platform === platform
-        )
-        if (assets.length === 0) return null
-        return (
-          <Card key={platform}>
-            <CardHeader>
-              <CardTitle className='flex items-center gap-2 text-base'>
+    <section
+      id='download-installers'
+      aria-labelledby='downloads-heading'
+      className='flex scroll-mt-24 flex-col gap-5'
+    >
+      <div className='flex flex-col gap-2'>
+        <h2
+          id='downloads-heading'
+          className='text-2xl font-semibold tracking-tight'
+        >
+          {t('Choose your platform')}
+        </h2>
+        <p className='text-muted-foreground text-sm leading-relaxed'>
+          {t(
+            'Choose the installer that matches your operating system and processor.'
+          )}
+        </p>
+      </div>
+      {platforms.length === 0 ? (
+        <EmptyState
+          bordered
+          title={t('No installers available')}
+          description={t(
+            'Visit the Pier project on GitHub for the latest release information.'
+          )}
+        />
+      ) : (
+        <Tabs
+          value={activePlatform}
+          onValueChange={setSelectedPlatform}
+          className='gap-5'
+        >
+          <TabsList
+            aria-label={t('Download platform')}
+            className={cn(
+              'grid w-full grid-cols-2 gap-1 p-1 group-data-horizontal/tabs:h-auto sm:flex sm:w-fit',
+              platforms.length === 1 && 'grid-cols-1'
+            )}
+          >
+            {platforms.map((platform) => (
+              <TabsTrigger
+                key={platform}
+                value={platform}
+                className='min-h-11 gap-2 px-3 sm:min-w-32 sm:px-5'
+              >
                 <HugeiconsIcon
                   icon={PLATFORM_ICONS[platform]}
-                  className='size-5'
                   aria-hidden='true'
                 />
-                <h2>{PLATFORM_LABELS[platform]}</h2>
-                {platform === props.visitorPlatform && (
-                  <Badge variant='secondary'>{t('Your device')}</Badge>
-                )}
-              </CardTitle>
-            </CardHeader>
-            <CardContent className='divide-y'>
-              {assets.map((asset) => (
-                <AssetRow key={asset.name} asset={asset} />
-              ))}
-            </CardContent>
-          </Card>
-        )
-      })}
+                {PLATFORM_LABELS[platform]}
+              </TabsTrigger>
+            ))}
+          </TabsList>
+          {platforms.map((platform) => (
+            <TabsContent key={platform} value={platform}>
+              <Card className='gap-0 rounded-2xl py-0'>
+                <CardHeader className='bg-muted/40 gap-2 border-b p-5 sm:px-6'>
+                  <CardTitle className='flex flex-wrap items-center gap-3'>
+                    <HugeiconsIcon
+                      icon={PLATFORM_ICONS[platform]}
+                      className='size-8'
+                      aria-hidden='true'
+                    />
+                    <h3>{PLATFORM_LABELS[platform]}</h3>
+                    {platform === props.visitorPlatform && (
+                      <Badge variant='secondary'>{t('Your device')}</Badge>
+                    )}
+                  </CardTitle>
+                  <CardDescription>
+                    {t('Select a version below to download Pier.')}
+                  </CardDescription>
+                </CardHeader>
+                <CardContent className='divide-y px-5 sm:px-6'>
+                  {props.assets
+                    .filter((asset) => asset.platform === platform)
+                    .map((asset) => (
+                      <AssetRow key={asset.name} asset={asset} />
+                    ))}
+                </CardContent>
+              </Card>
+            </TabsContent>
+          ))}
+        </Tabs>
+      )}
     </section>
   )
 }
@@ -96,11 +170,12 @@ function AssetRow(props: { asset: ClientDownloadAsset }) {
   const locale = toIntlLocale(i18n.resolvedLanguage || i18n.language)
   const asset = props.asset
   const label = t(assetLabelKey(asset))
+  const downloadName = `${PLATFORM_LABELS[asset.platform]} · ${label} · ${asset.arch}`
 
   return (
-    <div className='flex flex-col gap-2 py-3 first:pt-0 last:pb-0 sm:flex-row sm:items-center sm:justify-between'>
-      <div className='min-w-0 space-y-1'>
-        <div className='flex items-center gap-2 font-medium'>
+    <div className='flex min-w-0 flex-col gap-3 py-5 sm:flex-row sm:items-center sm:justify-between sm:gap-6'>
+      <div className='flex min-w-0 flex-col gap-2'>
+        <div className='flex flex-wrap items-center gap-2 font-medium'>
           {label}
           {asset.arch !== 'universal' && (
             <Badge variant='outline'>{asset.arch}</Badge>
@@ -118,7 +193,7 @@ function AssetRow(props: { asset: ClientDownloadAsset }) {
               </span>
               <CopyButton
                 value={asset.sha256}
-                className='size-6'
+                className='size-8'
                 iconClassName='size-3'
                 tooltip={t('Copy SHA-256 checksum')}
               />
@@ -126,25 +201,36 @@ function AssetRow(props: { asset: ClientDownloadAsset }) {
           )}
         </div>
       </div>
-      <div className='flex shrink-0 items-center gap-2'>
+      <div className='flex shrink-0 flex-wrap items-center gap-2'>
         {asset.mirror_url && (
           <Button
             variant='ghost'
-            size='sm'
+            size='lg'
             nativeButton={false}
             render={<a href={asset.url} rel='noopener' />}
-            aria-label={t('Download {{name}} from GitHub', { name: label })}
+            aria-label={t('Download {{name}} from GitHub', {
+              name: downloadName,
+            })}
           >
             GitHub
+            <HugeiconsIcon
+              icon={LinkSquare01Icon}
+              data-icon='inline-end'
+              aria-hidden='true'
+            />
           </Button>
         )}
         <Button
-          size='sm'
+          size='lg'
           nativeButton={false}
           render={<a href={downloadHref(asset)} rel='noopener' />}
-          aria-label={t('Download {{name}}', { name: label })}
+          aria-label={t('Download {{name}}', { name: downloadName })}
         >
-          <Download aria-hidden='true' />
+          <HugeiconsIcon
+            icon={Download04Icon}
+            data-icon='inline-start'
+            aria-hidden='true'
+          />
           {t('Download')}
         </Button>
       </div>
