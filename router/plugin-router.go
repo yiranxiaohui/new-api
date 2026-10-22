@@ -120,6 +120,9 @@ func productionPluginRouteHandlers(generation *jsplugin.RoutingGeneration, bindi
 		middleware.SystemPerformanceCheck(),
 		middleware.ModelRequestRateLimit(),
 		middleware.PrepareTaskPluginRoute(),
+		// Preparation handles native and dynamic queries without continuing;
+		// only submissions consume a user concurrency slot.
+		middleware.UserConcurrencyLimit(),
 		middleware.Distribute(),
 		controller.RelayTask,
 	}
