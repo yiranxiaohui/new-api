@@ -30,7 +30,10 @@ import {
 } from '@/components/data-table'
 import { useMediaQuery } from '@/hooks'
 import { useTableUrlState } from '@/hooks/use-table-url-state'
-import { createServerError } from '@/lib/server-error-message'
+import {
+  createServerError,
+  requireServerSuccess,
+} from '@/lib/server-error-message'
 
 import { getGroups, getUsers, searchUsers } from '../api'
 import {
@@ -100,17 +103,9 @@ export function UsersTable() {
 
   const { data: groupsData } = useQuery({
     queryKey: ['groups'],
-    queryFn: getGroups,
+    queryFn: async () => requireServerSuccess(await getGroups()),
+    staleTime: 5 * 60 * 1000,
   })
-
-  const groupOptions = useMemo(
-    () =>
-      (groupsData?.data || []).map((g) => ({
-        label: g,
-        value: g,
-      })),
-    [groupsData]
-  )
 
   const sortParams = useMemo(() => {
     const activeSort = sorting[0]
@@ -249,8 +244,11 @@ export function UsersTable() {
           },
           {
             columnId: 'group',
-            title: t('Group'),
-            options: groupOptions,
+            title: t('User Group'),
+            options: (groupsData?.data ?? []).map((group) => ({
+              label: group,
+              value: group,
+            })),
             singleSelect: true,
           },
         ],

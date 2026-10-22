@@ -31,6 +31,7 @@ var UserMaxConcurrency = 0
 // UserMaxConcurrencyCap bounds both the global setting and per-user
 // overrides; the admin UI enforces the same range.
 const UserMaxConcurrencyCap = 10000
+
 var ModelRequestRateLimitMutex sync.RWMutex
 
 func ModelRequestRateLimitGroup2JSONString() string {
@@ -39,7 +40,7 @@ func ModelRequestRateLimitGroup2JSONString() string {
 
 	jsonBytes, err := common.Marshal(ModelRequestRateLimitGroup)
 	if err != nil {
-		common.SysLog("error marshalling model ratio: " + err.Error())
+		common.SysLog(common.LogText("error marshalling model ratio: %s", err.Error()))
 	}
 	return string(jsonBytes)
 }

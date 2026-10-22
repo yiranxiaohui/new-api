@@ -41,7 +41,7 @@ func GetUserUsableGroups(userGroup string) map[string]string {
 		// 如果userGroup不在UserUsableGroups中，返回UserUsableGroups + userGroup。
 		// 但当用户组通过 "-:自身" 显式移除自己时,尊重该规则,不再自动加回。
 		if _, ok := groupsCopy[userGroup]; !ok && !selfRemoved {
-			groupsCopy[userGroup] = "用户分组"
+			groupsCopy[userGroup] = "User group"
 		}
 	}
 	return groupsCopy
