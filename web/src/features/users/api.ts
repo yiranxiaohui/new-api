@@ -146,6 +146,23 @@ export async function deleteUser(
 }
 
 /**
+ * Hard delete several users under one `admin.user.batch_delete` proof bound
+ * to the exact ID set. Root users, users at or above the operator's role, and
+ * missing users are skipped.
+ */
+export async function batchDeleteUsers(
+  ids: number[],
+  proofToken: string
+): Promise<ApiResponse<{ deleted: number; skipped: number }>> {
+  const res = await api.post(
+    '/api/user/batch',
+    { ids },
+    securityProofConfig(proofToken)
+  )
+  return res.data
+}
+
+/**
  * Manage user (promote, demote, enable, disable, delete); requires an
  * `admin.user.manage` proof (`admin.user.delete` for deletion)
  */

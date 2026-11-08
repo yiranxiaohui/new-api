@@ -42,6 +42,7 @@ const (
 	VerificationScopeAdminUserCreate       = "admin.user.create"
 	VerificationScopeAdminUserUpdate       = "admin.user.update"
 	VerificationScopeAdminUserDelete       = "admin.user.delete"
+	VerificationScopeAdminUserBatchDelete  = "admin.user.batch_delete"
 	VerificationScopeAdminUserManage       = "admin.user.manage"
 	VerificationScopeAdminUserPasskeyReset = "admin.user.passkey.reset"
 	VerificationScopeAdminUserTwoFADisable = "admin.user.2fa.disable"
@@ -85,6 +86,29 @@ type AccountUnbindingContext struct {
 
 type AdminUserContext struct {
 	UserID int `json:"user_id"`
+}
+
+// AdminUserBatchContext binds a batch deletion proof to the exact set of user
+// IDs, compared as a sorted, de-duplicated list.
+type AdminUserBatchContext struct {
+	UserIDs []int `json:"user_ids"`
+}
+
+// MaxAdminUserBatchSize bounds one batch deletion to the largest table page.
+const MaxAdminUserBatchSize = 100
+
+// NormalizeAdminUserBatchIDs de-duplicates and sorts user IDs, rejecting an
+// empty, oversized, or non-positive list.
+func NormalizeAdminUserBatchIDs(ids []int) ([]int, bool) {
+	if len(ids) == 0 || len(ids) > MaxAdminUserBatchSize {
+		return nil, false
+	}
+	normalized := slices.Clone(ids)
+	slices.Sort(normalized)
+	if normalized[0] <= 0 {
+		return nil, false
+	}
+	return slices.Compact(normalized), true
 }
 
 type AdminUserManageContext struct {
@@ -223,6 +247,17 @@ func BindVerificationOperation(operation VerificationOperation) (VerificationBin
 			return VerificationBinding{}, ErrVerificationContextInvalid
 		}
 		normalized = context
+	case VerificationScopeAdminUserBatchDelete:
+		var context AdminUserBatchContext
+		if len(fields) != 1 || common.Unmarshal(fields["user_ids"], &context.UserIDs) != nil {
+			return VerificationBinding{}, ErrVerificationContextInvalid
+		}
+		ids, ok := NormalizeAdminUserBatchIDs(context.UserIDs)
+		if !ok {
+			return VerificationBinding{}, ErrVerificationContextInvalid
+		}
+		context.UserIDs = ids
+		normalized = context
 	case VerificationScopeAdminUserManage:
 		var context AdminUserManageContext
 		if len(fields) != 2 || common.Unmarshal(operation.Context, &context) != nil || context.UserID <= 0 || !slices.Contains(adminUserManageActions, context.Action) {
@@ -349,7 +384,7 @@ func securityVerificationPolicy(scope string, state model.UserVerificationState)
 		VerificationScopeAccountBind, VerificationScopeAccountUnbind,
 		VerificationScopePasswordSet, VerificationScopePasswordChange, VerificationScopeAccountDelete,
 		VerificationScopeAdminUserCreate, VerificationScopeAdminUserUpdate, VerificationScopeAdminUserDelete,
-		VerificationScopeAdminUserManage, VerificationScopeAdminUserPasskeyReset,
+		VerificationScopeAdminUserBatchDelete, VerificationScopeAdminUserManage, VerificationScopeAdminUserPasskeyReset,
 		VerificationScopeAdminUserTwoFADisable, VerificationScopeAdminUserBindingClear:
 		if scope == VerificationScopeAccountDelete && state.Role == common.RoleRootUser {
 			return nil, ErrVerificationForbidden
@@ -414,7 +449,7 @@ func GetVerificationRequirements(identity AuthIdentity, scope string) (*Verifica
 			switch scope {
 			case VerificationScopeAccountBind, VerificationScopeAccountUnbind, VerificationScopePasswordSet, VerificationScopePasswordChange, VerificationScopeAccountDelete,
 				VerificationScopeAdminUserCreate, VerificationScopeAdminUserUpdate, VerificationScopeAdminUserDelete,
-				VerificationScopeAdminUserManage, VerificationScopeAdminUserPasskeyReset,
+				VerificationScopeAdminUserBatchDelete, VerificationScopeAdminUserManage, VerificationScopeAdminUserPasskeyReset,
 				VerificationScopeAdminUserTwoFADisable, VerificationScopeAdminUserBindingClear:
 				methods[i].Available, methods[i].Reason = false, "Password authentication is disabled."
 			}

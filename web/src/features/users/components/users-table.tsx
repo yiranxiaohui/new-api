@@ -186,6 +186,7 @@ export function UsersTable() {
     data: users,
     columns,
     enableRowSelection: true,
+    getRowId: (row) => String(row.id),
     columnFilters,
     globalFilter,
     pagination,

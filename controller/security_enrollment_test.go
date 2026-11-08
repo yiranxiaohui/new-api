@@ -795,6 +795,11 @@ func TestSecurityEnrollmentOperationContext(t *testing.T) {
 		{"admin create administrator", "admin.user.create", `{"role":10}`, nil},
 		{"admin create common user", "admin.user.create", `{"role":1}`, service.ErrVerificationContextInvalid},
 		{"admin create unknown role", "admin.user.create", `{"role":50}`, service.ErrVerificationContextInvalid},
+		{"admin batch delete", "admin.user.batch_delete", `{"user_ids":[3,1,3]}`, nil},
+		{"admin batch delete empty", "admin.user.batch_delete", `{"user_ids":[]}`, service.ErrVerificationContextInvalid},
+		{"admin batch delete zero", "admin.user.batch_delete", `{"user_ids":[0,1]}`, service.ErrVerificationContextInvalid},
+		{"admin batch delete oversized", "admin.user.batch_delete", fmt.Sprintf(`{"user_ids":[%s]}`, strings.TrimSuffix(strings.Repeat("1,", service.MaxAdminUserBatchSize+1), ",")), service.ErrVerificationContextInvalid},
+		{"admin batch delete extra field", "admin.user.batch_delete", `{"user_ids":[1],"user_id":1}`, service.ErrVerificationContextInvalid},
 		{"unknown scope", "user.email.change", `{}`, service.ErrProofScope},
 	} {
 		t.Run(test.name, func(t *testing.T) {
@@ -815,6 +820,11 @@ func TestSecurityEnrollmentOperationContext(t *testing.T) {
 	unsortedGrant, err := service.BindVerificationOperation(service.VerificationOperation{Scope: "access_token.generate", Context: []byte(`{"expires_at":0,"scopes":["usage:read"," profile:read","usage:read"]}`)})
 	require.NoError(t, err)
 	assert.Equal(t, sortedGrant, unsortedGrant, "a grant binds as a set")
+	sortedBatch, err := service.BindVerificationOperation(service.VerificationOperation{Scope: "admin.user.batch_delete", Context: []byte(`{"user_ids":[1,3]}`)})
+	require.NoError(t, err)
+	unsortedBatch, err := service.BindVerificationOperation(service.VerificationOperation{Scope: "admin.user.batch_delete", Context: []byte(`{"user_ids":[3,1,3]}`)})
+	require.NoError(t, err)
+	assert.Equal(t, sortedBatch, unsortedBatch, "a batch binds as a set")
 }
 
 func TestSecurityEnrollmentChannelProofRejectsMismatchesBeforeConsumption(t *testing.T) {

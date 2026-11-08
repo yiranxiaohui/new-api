@@ -17,7 +17,7 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import type { Row } from '@tanstack/react-table'
+import type { Row, Table } from '@tanstack/react-table'
 import { cleanup, render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { useEffect } from 'react'
@@ -26,6 +26,7 @@ import { afterEach, expect, it, vi } from 'vitest'
 import { api } from '@/lib/api'
 
 import type { User } from '../../types'
+import { DataTableBulkActions } from '../data-table-bulk-actions'
 import { DataTableRowActions } from '../data-table-row-actions'
 import { UsersDeleteDialog } from '../users-delete-dialog'
 import { UsersProvider, useUsers } from '../users-provider'
@@ -157,6 +158,56 @@ it('cancelling verification leaves the user untouched and returns to the confirm
   await userEvent.keyboard('{Escape}')
   await screen.findByRole('alertdialog')
   expect(del).not.toHaveBeenCalled()
+})
+
+it('bulk deleting users binds one proof to the selected ID set', async () => {
+  const proof = mockVerification('admin.user.batch_delete', 'batch-proof')
+  const post = vi.spyOn(api, 'post').mockImplementation(async (url) => {
+    if (url === '/api/verify') return proof
+    if (url === '/api/user/batch') {
+      return { data: { success: true, data: { deleted: 2, skipped: 0 } } }
+    }
+    throw new Error(`Unexpected POST ${url}`)
+  })
+  const resetRowSelection = vi.fn()
+  const selected = [target, { ...target, id: 5, username: 'second-user' }]
+  const table = {
+    getFilteredSelectedRowModel: () => ({
+      rows: selected.map((original) => ({ original })),
+    }),
+    resetRowSelection,
+  } as unknown as Table<User>
+  renderInProvider(<DataTableBulkActions table={table} />)
+  await userEvent.click(
+    await screen.findByRole('button', { name: 'Delete selected users' })
+  )
+  await userEvent.click(await screen.findByRole('button', { name: 'Delete' }))
+  await screen.findByLabelText('Authenticator code or backup code')
+  expect(post).not.toHaveBeenCalledWith(
+    '/api/user/batch',
+    expect.anything(),
+    expect.anything()
+  )
+  await completeTwoFactorVerification()
+  await waitFor(() =>
+    expect(post).toHaveBeenCalledWith(
+      '/api/user/batch',
+      { ids: [2, 5] },
+      expect.objectContaining({
+        headers: { 'X-Security-Proof': 'batch-proof' },
+        singleUseAuthorization: true,
+      })
+    )
+  )
+  expect(post).toHaveBeenCalledWith(
+    '/api/verify',
+    expect.objectContaining({
+      scope: 'admin.user.batch_delete',
+      context: { user_ids: [2, 5] },
+    }),
+    expect.anything()
+  )
+  await waitFor(() => expect(resetRowSelection).toHaveBeenCalled())
 })
 
 it('disabling a user from the row menu binds the proof to the user and action', async () => {

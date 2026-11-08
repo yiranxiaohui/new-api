@@ -1001,22 +1001,58 @@ type UserBatch struct {
 	Ids []int `json:"ids"`
 }
 
+// BatchDeleteUsers hard deletes several users under one step-up proof bound to
+// the exact ID set. Root users and users at or above the operator's role are
+// skipped, as are IDs that no longer exist; each deletion is audited.
 func BatchDeleteUsers(c *gin.Context) {
 	userBatch := UserBatch{}
-	if err := c.ShouldBindJSON(&userBatch); err != nil || len(userBatch.Ids) == 0 {
-		common.ApiErrorI18n(c, i18n.MsgInvalidParams)
+	if err := common.DecodeJson(c.Request.Body, &userBatch); err != nil {
+		common.ApiErrorT(c, "Invalid parameters")
+		return
+	}
+	ids, ok := service.NormalizeAdminUserBatchIDs(userBatch.Ids)
+	if !ok {
+		common.ApiErrorT(c, "Invalid parameters")
+		return
+	}
+	authorization := requireAdminUserProof(c, service.VerificationScopeAdminUserBatchDelete, service.AdminUserBatchContext{UserIDs: ids})
+	if authorization == nil {
 		return
 	}
 	myRole := c.GetInt("role")
-	count, err := model.BatchDeleteUsers(userBatch.Ids, myRole)
-	if err != nil {
-		common.ApiError(c, err)
-		return
+	deleted, skipped := 0, 0
+	for _, id := range ids {
+		user, err := model.GetUserById(id, false)
+		if err != nil {
+			if errors.Is(err, gorm.ErrRecordNotFound) {
+				skipped++
+				continue
+			}
+			common.ApiError(c, err)
+			return
+		}
+		if user.Role == common.RoleRootUser || user.Role >= myRole {
+			skipped++
+			continue
+		}
+		revokedAccessTokens, err := model.HardDeleteUserById(user.Id)
+		if err != nil {
+			common.ApiError(c, err)
+			return
+		}
+		deleted++
+		recordManageAuditFor(c, user.Id, "user.delete", map[string]any{
+			"username":              user.Username,
+			"id":                    user.Id,
+			"batch":                 true,
+			"verification_method":   authorization.Method,
+			"revoked_access_tokens": revokedAccessTokens,
+		})
 	}
 	c.JSON(http.StatusOK, gin.H{
 		"success": true,
 		"message": "",
-		"data":    count,
+		"data":    gin.H{"deleted": deleted, "skipped": skipped},
 	})
 }
 

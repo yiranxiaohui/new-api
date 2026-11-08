@@ -67,6 +67,14 @@ func TestAdminUserRiskOperationsRequireProofBeforeMutation(t *testing.T) {
 			},
 		},
 		{
+			name: "batch delete", method: http.MethodPost, path: "/api/user/batch", handler: BatchDeleteUsers,
+			body: func(target *model.User) string { return fmt.Sprintf(`{"ids":[%d]}`, target.Id) },
+			unchanged: func(t *testing.T, target *model.User) {
+				_, err := model.GetUserById(target.Id, false)
+				assert.NoError(t, err)
+			},
+		},
+		{
 			name: "manage disable", method: http.MethodPost, path: "/api/user/manage", handler: ManageUser,
 			body: func(target *model.User) string { return fmt.Sprintf(`{"id":%d,"action":"disable"}`, target.Id) },
 			unchanged: func(t *testing.T, target *model.User) {
@@ -288,6 +296,60 @@ func TestAdminUserProofIsBoundToTargetAndActionAndConsumedOnce(t *testing.T) {
 	assert.NotContains(t, string(auditJSON), proof)
 
 	response = adminUserRequest(http.MethodPost, "/api/user/manage", fmt.Sprintf(`{"id":%d,"action":"disable"}`, target.Id), proof, identity, common.RoleRootUser, nil, ManageUser)
+	require.NoError(t, common.Unmarshal(response.Body.Bytes(), &result))
+	assert.Equal(t, http.StatusForbidden, response.Code)
+	assert.Equal(t, "SECURITY_PROOF_CONSUMED", result.Code)
+}
+
+func TestAdminUserBatchDeleteBindsIDSetAndSkipsProtectedUsers(t *testing.T) {
+	operator, identity, target := setupAdminUserTest(t)
+	require.NoError(t, model.DB.AutoMigrate(&model.ExternalIdentityClaim{}, &model.Token{}))
+	other := &model.User{Username: "other-user", Password: target.Password, Role: common.RoleCommonUser, Status: common.UserStatusEnabled, Group: "default", AuthVersion: 1, AffCode: "other-aff"}
+	peer := &model.User{Username: "peer-admin", Password: target.Password, Role: common.RoleAdminUser, Status: common.UserStatusEnabled, Group: "default", AuthVersion: 1, AffCode: "peer-aff"}
+	require.NoError(t, model.DB.Create(other).Error)
+	require.NoError(t, model.DB.Create(peer).Error)
+	missing := peer.Id + 1000
+	batch := service.VerificationOperation{Scope: service.VerificationScopeAdminUserBatchDelete, Context: []byte(fmt.Sprintf(`{"user_ids":[%d,%d,%d,%d,%d]}`, target.Id, other.Id, peer.Id, operator.Id, missing))}
+	proof := issueSecurityEnrollmentProof(t, identity, batch, service.VerificationMethodPassword)
+
+	response := adminUserRequest(http.MethodPost, "/api/user/batch", fmt.Sprintf(`{"ids":[%d]}`, target.Id), proof, identity, common.RoleAdminUser, nil, BatchDeleteUsers)
+	var result securityEnrollmentResponse
+	require.NoError(t, common.Unmarshal(response.Body.Bytes(), &result))
+	assert.Equal(t, http.StatusForbidden, response.Code)
+	assert.Equal(t, "SECURITY_PROOF_CONTEXT_MISMATCH", result.Code)
+	_, err := model.GetUserById(target.Id, false)
+	require.NoError(t, err)
+
+	// The same set in another order with duplicates matches the proof. An
+	// administrator operator cannot delete the root operator or a peer admin.
+	body := fmt.Sprintf(`{"ids":[%d,%d,%d,%d,%d,%d]}`, missing, operator.Id, peer.Id, other.Id, target.Id, target.Id)
+	response = adminUserRequest(http.MethodPost, "/api/user/batch", body, proof, identity, common.RoleAdminUser, nil, BatchDeleteUsers)
+	require.NoError(t, common.Unmarshal(response.Body.Bytes(), &result))
+	require.True(t, result.Success, response.Body.String())
+	assert.JSONEq(t, `{"deleted":2,"skipped":3}`, string(result.Data))
+	for _, id := range []int{target.Id, other.Id} {
+		var count int64
+		require.NoError(t, model.DB.Unscoped().Model(&model.User{}).Where("id = ?", id).Count(&count).Error)
+		assert.Zero(t, count, "batch deletion is a hard delete")
+	}
+	for _, id := range []int{operator.Id, peer.Id} {
+		_, err := model.GetUserById(id, false)
+		assert.NoError(t, err)
+	}
+	var audits []model.AuditLog
+	require.NoError(t, model.LOG_DB.Where("action = ?", "user.delete").Find(&audits).Error)
+	require.Len(t, audits, 2)
+	for _, audit := range audits {
+		require.NotNil(t, audit.Other.Op)
+		batchFlag, err := common.Marshal(audit.Other.Op.Params["batch"])
+		require.NoError(t, err)
+		assert.JSONEq(t, "true", string(batchFlag))
+		auditJSON, err := common.Marshal(audit)
+		require.NoError(t, err)
+		assert.NotContains(t, string(auditJSON), proof)
+	}
+
+	response = adminUserRequest(http.MethodPost, "/api/user/batch", body, proof, identity, common.RoleAdminUser, nil, BatchDeleteUsers)
 	require.NoError(t, common.Unmarshal(response.Body.Bytes(), &result))
 	assert.Equal(t, http.StatusForbidden, response.Code)
 	assert.Equal(t, "SECURITY_PROOF_CONSUMED", result.Code)

@@ -593,48 +593,6 @@ func HardDeleteUserById(id int) (int64, error) {
 	return user.HardDelete()
 }
 
-// BatchDeleteUsers 批量删除用户，跳过 role >= operatorRole 的用户和 root 用户
-func BatchDeleteUsers(ids []int, operatorRole int) (int, error) {
-	if len(ids) == 0 {
-		return 0, errors.New("ids 不能为空！")
-	}
-
-	tx := DB.Begin()
-
-	var users []User
-	if err := tx.Where("id IN (?)", ids).Find(&users).Error; err != nil {
-		tx.Rollback()
-		return 0, err
-	}
-
-	var validIds []int
-	for _, u := range users {
-		if u.Role == common.RoleRootUser {
-			continue
-		}
-		if u.Role >= operatorRole {
-			continue
-		}
-		validIds = append(validIds, u.Id)
-	}
-
-	if len(validIds) == 0 {
-		tx.Rollback()
-		return 0, nil
-	}
-
-	if err := tx.Where("id IN (?)", validIds).Delete(&User{}).Error; err != nil {
-		tx.Rollback()
-		return 0, err
-	}
-
-	if err := tx.Commit().Error; err != nil {
-		return 0, err
-	}
-
-	return len(validIds), nil
-}
-
 func (user *User) TransferAffQuotaToQuota(quota int) error {
 	if quota <= 0 || quota > common.MaxWalletQuota || float64(quota) < common.QuotaPerUnit {
 		return fmt.Errorf("转移额度最小为%s！", logger.LogQuota(common.QuotaFromFloat(common.QuotaPerUnit)))

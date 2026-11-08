@@ -242,6 +242,8 @@ var accessTokenVerificationScopes = map[string]string{
 	VerificationScopeWithdrawalCreate:      "",
 	VerificationScopeWithdrawalReview:      "",
 	VerificationScopeWithdrawalConfigure:   "",
+	// Batch user deletion is a browser-session-only fork route.
+	VerificationScopeAdminUserBatchDelete: "",
 }
 
 // AccessTokenVerificationScope returns the token scope a PAT needs for a

@@ -45,6 +45,7 @@ export type SecurityProofScope =
   | 'admin.user.create'
   | 'admin.user.update'
   | 'admin.user.delete'
+  | 'admin.user.batch_delete'
   | 'admin.user.manage'
   | 'admin.user.passkey.reset'
   | 'admin.user.2fa.disable'
@@ -82,6 +83,7 @@ export type VerificationOperation =
         | 'admin.user.2fa.disable'
       context: { user_id: number }
     }
+  | { scope: 'admin.user.batch_delete'; context: { user_ids: number[] } }
   | {
       scope: 'admin.user.manage'
       context: { user_id: number; action: AdminUserManageAction }
